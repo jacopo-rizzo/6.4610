@@ -19,7 +19,15 @@ python scripts/train_superbpe.py --config tokenizer/llama3_superbpe.yaml
 python scripts/pretokenize.py --tokenizer tokenizer/llama3.yaml
 python scripts/pretokenize.py --tokenizer tokenizer/llama3_superbpe.yaml
 
-# 3. Try a decoder on one prompt (autoregressive | standard | superword | exact_match)
+# 3. Pretrain each draft (model x tokenizer), then distill it on target responses
+python scripts/pretrain.py --model model/draft_50m.yaml --tokenizer tokenizer/llama3.yaml
+python scripts/pretrain.py --model model/draft_50m.yaml --tokenizer tokenizer/llama3_superbpe.yaml
+python scripts/distill_generate.py        # once: target answers UltraChat prompts
+python scripts/distill_train.py train.model=model/draft_50m.yaml train.tokenizer=tokenizer/llama3.yaml
+python scripts/distill_train.py train.model=model/draft_50m.yaml train.tokenizer=tokenizer/llama3_superbpe.yaml
+# (multi-GPU: `accelerate launch scripts/pretrain.py ...`; re-running resumes)
+
+# Try a decoder on one prompt (autoregressive | standard | superword | exact_match)
 python scripts/generate.py --method autoregressive --prompt "Explain speculative decoding."
 
 # 4. Evaluate (settings in configs/eval/; results go to $RESULTS_DIR)

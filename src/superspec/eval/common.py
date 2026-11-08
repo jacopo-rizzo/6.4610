@@ -51,6 +51,18 @@ def load_drafts(cfg, device: str, names: list[str] | None = None) -> dict[str, D
     for entry in cfg.drafts:
         if names and entry.name not in names:
             continue
+        vocab = load_vocab(entry.tokenizer)
+        check_draft_tokenizer(entry.checkpoint, vocab)
         model = load_causal_lm(entry.checkpoint, dtype=cfg.get("dtype", "bfloat16"), device=device)
-        drafts[entry.name] = Draft(entry.name, CachedLM(model), load_vocab(entry.tokenizer))
+        drafts[entry.name] = Draft(entry.name, CachedLM(model), vocab)
     return drafts
+
+
+def check_draft_tokenizer(checkpoint, vocab) -> None:
+    """Fail early if a draft was trained with a different tokenizer than configured."""
+    from superspec.training.model import read_draft_meta
+
+    meta = read_draft_meta(checkpoint)
+    if meta is not None and meta["tokenizer"] != vocab.name:
+        raise ValueError(f"{checkpoint} was trained with tokenizer {meta['tokenizer']!r}, "
+                         f"but the eval config pairs it with {vocab.name!r}")

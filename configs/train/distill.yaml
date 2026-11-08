@@ -7,6 +7,7 @@
 
 generate:
   target: meta-llama/Llama-3.1-8B-Instruct
+  tokenizer: tokenizer/llama3.yaml
   prompts:
     hf_name: HuggingFaceH4/ultrachat_200k
     split: train_sft
@@ -21,13 +22,14 @@ generate:
   seed: 0
 
 train:
-  init_from: ${oc.env:CKPT_DIR}/drafts/pretrain   # pretrained draft to start from
+  # Pass model and tokenizer per run, e.g. train.model=model/draft_150m.yaml
   model: model/draft_50m.yaml
   tokenizer: tokenizer/llama3.yaml
+  # Starts from <init_from>/<model>_<tokenizer>, the pretraining output.
+  init_from: ${oc.env:CKPT_DIR}/drafts/pretrain
   data_path: ${generate.output_path}
-  chat_template: llama3      # format prompts exactly as the target sees them
-  loss_on: response_only     # mask out prompt tokens
-  seq_len: 2048
+  val_every: 100             # every 100th prompt is held out (1%)
+  max_seq_len: 2048          # tokens; longer responses are cut
   epochs: 2
   optim:
     name: adamw
@@ -37,8 +39,17 @@ train:
     grad_clip: 1.0
     schedule: cosine
     warmup_frac: 0.03
-  micro_batch_size: 16
-  grad_accum_steps: 4
+    min_lr_frac: 0.1
+  # Same examples per step for both tokenizers (they share the examples).
+  examples_per_step: 64
+  micro_batch_size: 8        # per GPU
   precision: bf16
   seed: 0
+  logging:
+    every_steps: 20
+    eval_every_steps: 200
+    wandb: ${oc.env:WANDB_MODE,disabled}
+  eval_examples: 1000        # held-out responses per eval (null = all)
+  save_every_steps: 500
+  # Final models: <output_dir>/<model>_<tokenizer>; the eval configs read these.
   output_dir: ${oc.env:CKPT_DIR}/drafts/distill

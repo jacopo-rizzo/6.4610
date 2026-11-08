@@ -41,6 +41,7 @@ class SuperBPETokenizer:
         self.vocab_size = base.vocab_size + len(self.merges)
         self.bos_id = base.bos_id
         self.eos_id = base.eos_id
+        self.special_ids = base.special_ids
 
         # Merge priority: earlier merges are applied first.
         self.rank: dict[Pair, int] = {pair: k for k, pair in enumerate(self.merges)}

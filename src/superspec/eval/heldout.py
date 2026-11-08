@@ -26,10 +26,12 @@ from superspec.data.token_files import TokenFile
 
 
 def token_byte_lengths(vocab) -> np.ndarray:
-    """Bytes of each token id. The end-of-document token counts as 0 bytes: it is
-    predicted (and costs loss) equally often for both tokenizers."""
+    """Bytes of text of each token id. Special tokens (end of document, chat
+    markers) count as 0 bytes: they are predicted, and cost loss, equally often
+    for both tokenizers, but are not text."""
     lengths = np.array([len(vocab.token_bytes(i)) for i in range(vocab.vocab_size)], dtype=np.int64)
-    lengths[vocab.eos_id] = 0
+    for i in getattr(vocab, "special_ids", {vocab.eos_id}):
+        lengths[i] = 0
     return lengths
 
 
