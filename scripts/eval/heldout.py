@@ -1,10 +1,11 @@
 """Held-out loss (bits per byte) of every draft in an eval config.
 
-    python scripts/eval_heldout.py --config eval/default.yaml
-    python scripts/eval_heldout.py --drafts std_50m superbpe_50m heldout.max_windows=200
+    python scripts/eval/heldout.py --config eval/default.yaml
+    python scripts/eval/heldout.py --drafts std_50m superbpe_50m heldout.max_windows=200
+    python scripts/eval/heldout.py target_profile=targets/olmo2.yaml
 
 Uses the pretokenized `val` split of each draft's tokenizer (run
-scripts/pretokenize.py first). The proposal requires the standard and
+scripts/train/pretokenize.py first). The proposal requires the standard and
 SuperBPE drafts of the same size to have roughly matching loss, so that speed
 differences come from the tokenizer and not from draft quality.
 """

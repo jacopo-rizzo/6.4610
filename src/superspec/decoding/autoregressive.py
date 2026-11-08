@@ -33,7 +33,8 @@ def autoregressive_generate(
 
     tokens = list(prompt)
     for _ in range(max_new_tokens):
-        logits = target.logits(tokens, 1)[0]
+        # Only the tokenizer's ids are real tokens (the output layer may be padded).
+        logits = target.logits(tokens, 1)[0, : target_vocab.vocab_size]
         token = int(logits.argmax()) if sampling.greedy else sample(to_probs(logits, sampling),
                                                                     generator)
         tokens.append(token)

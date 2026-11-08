@@ -1,14 +1,15 @@
 """Benchmark decoding speed and acceptance (Spec-Bench, HumanEval, MBPP).
 
-    python scripts/eval_speed.py --config eval/specbench.yaml
-    python scripts/eval_speed.py --config eval/humaneval.yaml --drafts std_50m superbpe_50m
+    python scripts/eval/speed.py --config eval/specbench.yaml
+    python scripts/eval/speed.py --config eval/humaneval.yaml --drafts std_50m superbpe_50m
+    python scripts/eval/speed.py --config eval/specbench.yaml target_profile=targets/olmo2.yaml
 
     # a subset of the sweep, e.g. to split work across GPUs:
-    python scripts/eval_speed.py --config eval/specbench.yaml "speculative.temperatures=[0.0]"
+    python scripts/eval/speed.py --config eval/specbench.yaml "speculative.temperatures=[0.0]"
 
     # resume an interrupted run / re-summarize:
-    python scripts/eval_speed.py --config eval/specbench.yaml --output-dir results/specbench/<run>
-    python scripts/eval_speed.py --summarize results/specbench/<run>/results.jsonl
+    python scripts/eval/speed.py --config eval/specbench.yaml --output-dir <run folder>
+    python scripts/eval/speed.py --summarize <run folder>/results.jsonl
 
 Writes results.jsonl (one row per run and prompt) and summary.csv.
 """

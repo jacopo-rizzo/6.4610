@@ -25,9 +25,10 @@ class Draft:
 
 
 def stop_token_ids(vocab, tokenizer_cfg) -> set[int]:
-    """Generation ends at <|eot_id|> (end of assistant turn) or <|end_of_text|>."""
+    """Generation ends at the end-of-turn or end-of-text token
+    (Llama-3: <|eot_id|> / <|end_of_text|>; OLMo-2: <|endoftext|> for both)."""
     special = tokenizer_cfg.special_tokens
-    return {vocab.hf.convert_tokens_to_ids(special[k]) for k in ("eos", "eos_alt") if k in special}
+    return {vocab.hf.convert_tokens_to_ids(special[k]) for k in ("end_of_turn", "end_of_text")}
 
 
 def chat_prompt_ids(target_vocab, text: str) -> list[int]:
@@ -40,9 +41,10 @@ def chat_prompt_ids(target_vocab, text: str) -> list[int]:
 
 
 def load_target(cfg, device: str) -> Target:
-    tokenizer_cfg = load_config(cfg.target_tokenizer)
+    """The target from the config's target profile (cfg.target)."""
+    tokenizer_cfg = load_config(cfg.target.tokenizer)
     vocab = load_vocab(tokenizer_cfg)
-    model = load_causal_lm(cfg.target, dtype=cfg.get("dtype", "bfloat16"), device=device)
+    model = load_causal_lm(cfg.target.hf_name, dtype=cfg.get("dtype", "bfloat16"), device=device)
     return Target(CachedLM(model), vocab, stop_token_ids(vocab, tokenizer_cfg))
 
 

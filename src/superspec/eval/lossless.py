@@ -22,6 +22,7 @@ from superspec.decoding import SamplingConfig, SpeculativeDecoder, autoregressiv
 from superspec.eval.common import Draft, Target, chat_prompt_ids
 from superspec.eval.prompts import Prompt
 from superspec.eval.stats import fisher_combined_p, permutation_test
+from superspec.tokenization.vocab import vocab_kind
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def run_lossless_check(cfg, target: Target, drafts: dict[str, Draft], prompts: l
 
     methods = {}
     for name, draft in drafts.items():
-        names = list(cfg.speculative.methods.get(draft.vocab.name, [])) + ["exact_match"]
+        names = list(cfg.speculative.methods[vocab_kind(draft.vocab)]) + ["exact_match"]
         for method in names:
             decoder = SpeculativeDecoder(
                 target.lm, target.vocab, draft.lm, draft.vocab, method, sampling,

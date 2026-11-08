@@ -1,6 +1,6 @@
 """Recover the raw bytes behind each token of a byte-level BPE tokenizer.
 
-Byte-level BPE tokenizers (GPT-2, Llama-3) store tokens as printable strings
+Byte-level BPE tokenizers (GPT-2, Llama-3, OLMo-2) store tokens as printable strings
 in which each byte is mapped to a unicode character (e.g. a space becomes
 "Ġ"). Superword learning needs the actual bytes of each token, for example to
 count how many words a candidate superword spans.

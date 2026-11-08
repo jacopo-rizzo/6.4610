@@ -1,8 +1,9 @@
 """One-time: learn the SuperBPE draft tokenizer's superword merges.
 
-    python scripts/train_superbpe.py --config tokenizer/llama3_superbpe.yaml
+    python scripts/train/train_superbpe.py --config tokenizer/llama3_superbpe.yaml
+    python scripts/train/train_superbpe.py --config tokenizer/olmo2_superbpe.yaml
 
-Tokenizes the configured text with the target (Llama-3) tokenizer, learns
+Tokenizes the configured text with the target's tokenizer, learns
 `num_superword_merges` superwords on top of it, and saves the result to the
 config's `output_dir`. Load it afterwards with
 `load_vocab("tokenizer/llama3_superbpe.yaml")`.

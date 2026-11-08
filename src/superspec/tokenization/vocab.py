@@ -5,7 +5,7 @@ to a `Vocab`, so it does not need to know which tokenizer a draft uses:
 
     vocab = load_vocab("tokenizer/llama3_superbpe.yaml")
     ids = vocab.encode("Hello there, how are you?")
-    target_ids = vocab.to_target_ids(ids)   # same text in Llama-3 token ids
+    target_ids = vocab.to_target_ids(ids)   # same text in target token ids
 
 For the standard vocab the target-id conversions are the identity.
 """
@@ -21,7 +21,7 @@ from superspec.tokenization.byte_level import token_string_to_bytes
 class Vocab(Protocol):
     name: str
     vocab_size: int          # size of this tokenizer's vocabulary
-    target_vocab_size: int   # size of the target (Llama-3) vocabulary
+    target_vocab_size: int   # size of the target vocabulary (e.g. Llama-3, OLMo-2)
     bos_id: int
     eos_id: int              # end-of-document token, used between pretraining docs
 
@@ -34,16 +34,20 @@ class Vocab(Protocol):
 
 
 class StandardVocab:
-    """The target model's own tokenizer (Llama-3 BPE), wrapped as a `Vocab`."""
+    """The target model's own tokenizer (e.g. Llama-3 or OLMo-2), wrapped as a `Vocab`.
 
-    def __init__(self, hf_tokenizer, name: str = "llama3",
+    Must be a byte-level BPE tokenizer (both targets are), so every token maps
+    to exact bytes.
+    """
+
+    def __init__(self, hf_tokenizer, name: str,
                  bos_token: str | None = None, eos_token: str | None = None):
         self.hf = hf_tokenizer
         self.name = name
         self.vocab_size = len(hf_tokenizer)
         self.target_vocab_size = self.vocab_size
 
-        # Special tokens (Llama-3's <|...|> and reserved tokens) have no byte-level
+        # Special tokens (<|...|> and reserved tokens) have no byte-level
         # encoding; we record their literal text instead.
         self.special_ids = set(hf_tokenizer.all_special_ids)
         self.special_ids |= set(getattr(hf_tokenizer, "added_tokens_decoder", {}).keys())
@@ -53,13 +57,19 @@ class StandardVocab:
             if i in self.special_ids or tok is None:
                 self._bytes.append((tok or "").encode("utf-8"))
             else:
-                self._bytes.append(token_string_to_bytes(tok))
+                try:
+                    self._bytes.append(token_string_to_bytes(tok))
+                except KeyError:
+                    raise ValueError(f"{name}: token {tok!r} is not byte-level BPE; only "
+                                     "byte-level tokenizers are supported") from None
 
-        self.bos_id = hf_tokenizer.convert_tokens_to_ids(bos_token or hf_tokenizer.bos_token)
-        self.eos_id = hf_tokenizer.convert_tokens_to_ids(eos_token or hf_tokenizer.eos_token)
+        eos_token = eos_token or hf_tokenizer.eos_token
+        self.eos_id = hf_tokenizer.convert_tokens_to_ids(eos_token)
+        bos_token = bos_token or hf_tokenizer.bos_token
+        self.bos_id = hf_tokenizer.convert_tokens_to_ids(bos_token) if bos_token else self.eos_id
 
     @classmethod
-    def from_pretrained(cls, name_or_path: str | Path, name: str = "llama3",
+    def from_pretrained(cls, name_or_path: str | Path, name: str,
                         bos_token: str | None = None, eos_token: str | None = None):
         from transformers import AutoTokenizer  # imported lazily: heavy dependency
 
@@ -95,7 +105,7 @@ def load_vocab(tokenizer_config) -> Vocab:
     """Load a tokenizer from its config (a path under `configs/` or a loaded config).
 
     A config with a `base_tokenizer` key is a SuperBPE tokenizer, loaded from its
-    `output_dir` (run scripts/train_superbpe.py first). Otherwise it is a
+    `output_dir` (run scripts/train/train_superbpe.py first). Otherwise it is a
     standard HF tokenizer loaded from `hf_name`.
     """
     from superspec.config import load_config
@@ -107,10 +117,12 @@ def load_vocab(tokenizer_config) -> Vocab:
     if "base_tokenizer" in cfg:
         return SuperBPETokenizer.load(cfg.output_dir)
 
-    special = cfg.get("special_tokens", {})
-    # Pretraining separates documents with <|end_of_text|>, not the chat <|eot_id|>.
-    return StandardVocab.from_pretrained(
-        cfg.hf_name, name=cfg.name,
-        bos_token=special.get("bos"),
-        eos_token=special.get("eos_alt", special.get("eos")),
-    )
+    # eos_id separates pretraining documents: the end-of-text token (for
+    # Llama-3 <|end_of_text|>, not the end-of-turn <|eot_id|>).
+    return StandardVocab.from_pretrained(cfg.hf_name, name=cfg.name,
+                                         eos_token=cfg.special_tokens.end_of_text)
+
+
+def vocab_kind(vocab) -> str:
+    """"superbpe" for a SuperBPE draft vocabulary, "standard" for the target's own."""
+    return "superbpe" if hasattr(vocab, "merges") else "standard"

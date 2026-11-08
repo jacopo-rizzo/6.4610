@@ -1,14 +1,18 @@
 # Smoke test: 200 target responses, then a short fine-tune of each smoke draft.
-#   python scripts/distill_generate.py --config smoke/distill.yaml
-#   python scripts/distill_train.py --config smoke/distill.yaml train.tokenizer=tokenizer/llama3.yaml
+#   python scripts/train/distill_generate.py --config smoke/distill.yaml
+#   python scripts/train/distill_train.py --config smoke/distill.yaml --tokenizer standard
 defaults: ../train/distill.yaml
+
+# Smoke runs use the small smoke SuperBPE tokenizer as "the SuperBPE tokenizer".
+target:
+  superbpe_tokenizer: ${target.smoke_superbpe_tokenizer}
 
 generate:
   prompts:
     num_prompts: 200
   sampling:
     max_new_tokens: 256
-  output_path: ${oc.env:CKPT_DIR}/smoke/distill_data/ultrachat_llama3.jsonl
+  output_path: ${oc.env:CKPT_DIR}/smoke/distill_data/ultrachat_${target.name}.jsonl
 
 train:
   init_from: ${oc.env:CKPT_DIR}/smoke/drafts/pretrain

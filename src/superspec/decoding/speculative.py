@@ -117,7 +117,10 @@ class SpeculativeDecoder:
                 proposal = self._to_target_strings(proposal, max_tokens)
 
             k = len(proposal)
+            # The output layer can have more rows than the tokenizer has ids (OLMo-2:
+            # 100,352 vs ~100,280); the extra rows are padding, never real tokens.
             target_logits = self.target.logits(tokens + proposal.target_tokens, k + 1)
+            target_logits = target_logits[:, : self.target_vocab.vocab_size]
             t3 = self._now()
 
             if self.method == "exact_match":

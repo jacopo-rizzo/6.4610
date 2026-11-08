@@ -1,16 +1,20 @@
 # Smoke test: run each eval script once on the smoke drafts, a few prompts each.
-#   python scripts/eval_heldout.py --config smoke/eval.yaml
-#   python scripts/eval_speed.py --config smoke/eval.yaml --output-dir $RESULTS_DIR/smoke/specbench
-#   python scripts/eval_lossless.py --config smoke/eval.yaml
+#   python scripts/eval/heldout.py --config smoke/eval.yaml
+#   python scripts/eval/speed.py --config smoke/eval.yaml
+#   python scripts/eval/lossless.py --config smoke/eval.yaml
 defaults: ../eval/specbench.yaml
+
+# Smoke runs use the small smoke SuperBPE tokenizer as "the SuperBPE tokenizer".
+target:
+  superbpe_tokenizer: ${target.smoke_superbpe_tokenizer}
 
 drafts:
   - name: std_50m
-    checkpoint: ${oc.env:CKPT_DIR}/smoke/drafts/distill/draft_50m_llama3
-    tokenizer: tokenizer/llama3.yaml
+    checkpoint: ${oc.env:CKPT_DIR}/smoke/drafts/distill/draft_50m_${target.name}
+    tokenizer: ${target.tokenizer}
   - name: superbpe_50m
-    checkpoint: ${oc.env:CKPT_DIR}/smoke/drafts/distill/draft_50m_llama3_superbpe
-    tokenizer: smoke/tokenizer_superbpe.yaml
+    checkpoint: ${oc.env:CKPT_DIR}/smoke/drafts/distill/draft_50m_${target.name}_superbpe
+    tokenizer: ${target.superbpe_tokenizer}
 
 data:
   max_prompts_per_category: 1  # one prompt from each of the 6 categories
@@ -35,4 +39,4 @@ heldout:
   budget: 0.05GB
   max_windows: 50
 
-output_dir: ${oc.env:RESULTS_DIR,./results}/smoke
+output_dir: ${oc.env:RESULTS_DIR,./results}/smoke/${target.name}

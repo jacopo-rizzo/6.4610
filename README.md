@@ -17,37 +17,43 @@ roughly 30-60 minutes, writing only under `$CKPT_DIR/smoke` and
 
 ```bash
 bash scripts/smoke_test.sh                 # unit tests + all steps + checks
+TARGET=olmo2 bash scripts/smoke_test.sh    # same for the OLMo-2 target
 FROM_STEP=4 bash scripts/smoke_test.sh     # resume from a step after fixing something
 python scripts/check_smoke_outputs.py      # just the checks
 ```
 
 ## Pipeline
 
+Commands default to the Llama-3.1-8B-Instruct target. For OLMo-2-7B-Instruct,
+add `target_profile=targets/olmo2.yaml` to any command (profiles live in
+`configs/targets/`). `--tokenizer standard|superbpe` picks the target's own
+tokenizer or its SuperBPE draft tokenizer.
+
 ```bash
-# 1. One-time: learn the SuperBPE draft tokenizer (Llama-3 vocab + 30k superwords)
-python scripts/train_superbpe.py --config tokenizer/llama3_superbpe.yaml
+# 1. One-time: learn the SuperBPE draft tokenizer (target vocab + 30k superwords)
+python scripts/train/train_superbpe.py --config tokenizer/llama3_superbpe.yaml   # or olmo2_superbpe
 
 # 2. Pretokenize the pretraining mix, once per tokenizer
-python scripts/pretokenize.py --tokenizer tokenizer/llama3.yaml
-python scripts/pretokenize.py --tokenizer tokenizer/llama3_superbpe.yaml
+python scripts/train/pretokenize.py --tokenizer standard
+python scripts/train/pretokenize.py --tokenizer superbpe
 
 # 3. Pretrain each draft (model x tokenizer), then distill it on target responses
-python scripts/pretrain.py --model model/draft_50m.yaml --tokenizer tokenizer/llama3.yaml
-python scripts/pretrain.py --model model/draft_50m.yaml --tokenizer tokenizer/llama3_superbpe.yaml
-python scripts/distill_generate.py        # once: target answers UltraChat prompts
-python scripts/distill_train.py train.model=model/draft_50m.yaml train.tokenizer=tokenizer/llama3.yaml
-python scripts/distill_train.py train.model=model/draft_50m.yaml train.tokenizer=tokenizer/llama3_superbpe.yaml
-# (multi-GPU: `accelerate launch scripts/pretrain.py ...`; re-running resumes)
+python scripts/train/pretrain.py --model model/draft_50m.yaml --tokenizer standard
+python scripts/train/pretrain.py --model model/draft_50m.yaml --tokenizer superbpe
+python scripts/train/distill_generate.py        # once per target: answers to UltraChat prompts
+python scripts/train/distill_train.py --model model/draft_50m.yaml --tokenizer standard
+python scripts/train/distill_train.py --model model/draft_50m.yaml --tokenizer superbpe
+# (multi-GPU: `accelerate launch scripts/train/pretrain.py ...`; re-running resumes)
+
+# 4. Evaluate (settings in configs/eval/; results go to $RESULTS_DIR/<target>)
+python scripts/eval/heldout.py                                  # draft loss, bits/byte
+python scripts/eval/speed.py --config eval/specbench.yaml       # speed + acceptance
+python scripts/eval/speed.py --config eval/humaneval.yaml
+python scripts/eval/speed.py --config eval/mbpp.yaml
+python scripts/eval/lossless.py --config eval/specbench.yaml    # sampled outputs match target?
 
 # Try a decoder on one prompt (autoregressive | standard | superword | exact_match)
-python scripts/generate.py --method autoregressive --prompt "Explain speculative decoding."
-
-# 4. Evaluate (settings in configs/eval/; results go to $RESULTS_DIR)
-python scripts/eval_heldout.py                                  # draft loss, bits/byte
-python scripts/eval_speed.py --config eval/specbench.yaml       # speed + acceptance
-python scripts/eval_speed.py --config eval/humaneval.yaml
-python scripts/eval_speed.py --config eval/mbpp.yaml
-python scripts/eval_lossless.py --config eval/specbench.yaml    # sampled outputs match target?
+python scripts/eval/generate.py --method autoregressive --prompt "Explain speculative decoding."
 
 # Tests (no GPU or downloads needed; test_decoding.py needs torch + transformers, ~3 min on CPU)
 pytest tests/

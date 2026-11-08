@@ -1,8 +1,8 @@
 """Distillation step 2: fine-tune a pretrained draft on the target's responses.
 
-    python scripts/distill_train.py train.model=model/draft_50m.yaml train.tokenizer=tokenizer/llama3.yaml
-    python scripts/distill_train.py train.model=model/draft_50m.yaml \
-        train.tokenizer=tokenizer/llama3_superbpe.yaml
+    python scripts/train/distill_train.py --model model/draft_50m.yaml --tokenizer standard
+    python scripts/train/distill_train.py --model model/draft_50m.yaml --tokenizer superbpe
+    python scripts/train/distill_train.py --tokenizer superbpe target_profile=targets/olmo2.yaml
 
 Starts from <train.init_from>/<model>_<tokenizer> (the pretraining output) and
 saves to <train.output_dir>/<model>_<tokenizer>, which is where the eval
@@ -19,7 +19,7 @@ from accelerate.utils import set_seed
 from omegaconf import OmegaConf
 from transformers import AutoModelForCausalLM
 
-from superspec.config import load_config
+from superspec.config import load_config, resolve_tokenizer
 from superspec.tokenization import load_vocab
 from superspec.training.distill import (
     DistillBatches,
@@ -39,14 +39,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default="train/distill.yaml")
+    parser.add_argument("--model", default=None, help="model config (default: train.model)")
+    parser.add_argument("--tokenizer", default=None,
+                        help="standard | superbpe (the target's tokenizers) or a tokenizer config")
     parser.add_argument("overrides", nargs="*", help="e.g. train.optim.lr=5e-5")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
 
     full_cfg = load_config(args.config, args.overrides)
     cfg = full_cfg.train
-    model_cfg = load_config(cfg.model)
-    vocab = load_vocab(cfg.tokenizer)
+    model_cfg = load_config(args.model or cfg.model)
+    vocab = load_vocab(resolve_tokenizer(full_cfg, args.tokenizer) if args.tokenizer
+                       else cfg.tokenizer)
     name = run_name(model_cfg.name, vocab.name)
     init_dir = Path(cfg.init_from) / name
     run_dir = Path(cfg.output_dir) / name

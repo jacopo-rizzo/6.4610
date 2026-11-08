@@ -1,6 +1,7 @@
 """Check that every step of the smoke test (scripts/smoke_test.sh) saved what it should.
 
-    python scripts/check_smoke_outputs.py
+    python scripts/check_smoke_outputs.py                                  # Llama-3
+    python scripts/check_smoke_outputs.py target_profile=targets/olmo2.yaml
 
 Prints one PASS/FAIL line per check and exits with status 1 if any fail.
 Checks contents, not just existence: e.g. both tokenizers' token files must
@@ -35,10 +36,14 @@ def main():
     from superspec.tokenization import load_vocab
     from superspec.training.model import read_draft_meta
 
-    tok_cfg = load_config("smoke/tokenizer_superbpe.yaml")
-    pre_cfg = load_config("smoke/pretrain.yaml")
-    dis_cfg = load_config("smoke/distill.yaml")
-    eval_cfg = load_config("smoke/eval.yaml")
+    overrides = sys.argv[1:]                       # e.g. target_profile=targets/olmo2.yaml
+    pre_cfg = load_config("smoke/pretrain.yaml", overrides)
+    dis_cfg = load_config("smoke/distill.yaml", overrides)
+    eval_cfg = load_config("smoke/eval.yaml", overrides)
+    target = pre_cfg.target
+    tok_cfg = load_config(target.superbpe_tokenizer)
+    std_tok_cfg = load_config(target.tokenizer)
+    print(f"Checking smoke outputs for target {target.name}\n")
     budget = f"{pre_cfg.data.train_bytes / 1e9:g}GB"
     vocabs = {}
 
@@ -54,12 +59,12 @@ def main():
 
     @check("tokenizer: loads, round-trips text, compresses")
     def _():
-        vocabs["std"] = load_vocab("tokenizer/llama3.yaml")
-        vocabs["super"] = sup = load_vocab("smoke/tokenizer_superbpe.yaml")
+        vocabs["std"] = load_vocab(std_tok_cfg)
+        vocabs["super"] = sup = load_vocab(tok_cfg)
         text = "One of the most important parts of the day is the morning, as it is for many people.\n"
         ids = sup.encode(text)
         assert sup.decode(ids) == text, "decode(encode(text)) != text"
-        assert sup.to_target_ids(ids) == vocabs["std"].encode(text), "expansion != Llama-3 tokens"
+        assert sup.to_target_ids(ids) == vocabs["std"].encode(text), "expansion != target tokens"
         assert len(ids) < len(vocabs["std"].encode(text)), "no compression on plain English"
         return f"{len(vocabs['std'].encode(text))} -> {len(ids)} tokens"
 
@@ -86,7 +91,7 @@ def main():
         assert len(rows) == dis_cfg.generate.prompts.num_prompts, f"{len(rows)} rows"
         assert [r["index"] for r in rows] == list(range(len(rows))), "indices not 0..n-1"
         std, sup = vocabs["std"], vocabs["super"]
-        eot = std.hf.convert_tokens_to_ids("<|eot_id|>")
+        eot = std.hf.convert_tokens_to_ids(std_tok_cfg.special_tokens.end_of_turn)
         for r in rows:
             assert r["response_ids"], f"empty response at {r['index']}"
             assert r["finished"] == (r["response_ids"][-1] == eot), f"eot mismatch at {r['index']}"
@@ -97,7 +102,8 @@ def main():
 
     # ---- 4/5. draft checkpoints ----
     for stage, cfg_dir in (("pretrain", pre_cfg.output_dir), ("distill", dis_cfg.train.output_dir)):
-        for key, vocab_key in (("draft_50m_llama3", "std"), ("draft_50m_llama3_superbpe", "super")):
+        for key, vocab_key in ((f"draft_50m_{target.name}", "std"),
+                               (f"draft_50m_{target.name}_superbpe", "super")):
             @check(f"{stage}: {key} saved, loads, matches tokenizer")
             def _(stage=stage, run=Path(cfg_dir) / key, vocab_key=vocab_key):
                 from superspec.models import load_causal_lm

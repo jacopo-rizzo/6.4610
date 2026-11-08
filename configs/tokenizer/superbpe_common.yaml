@@ -1,0 +1,42 @@
+# Settings shared by every target's SuperBPE tokenizer
+# (tokenizer/<target>_superbpe.yaml sets the base vocabulary and output folder).
+#
+# We keep every target token and its merges, then continue BPE training
+# *without* whitespace pretokenization, so the new merges are superwords
+# (concatenations of target tokens that can span spaces). Every superword
+# therefore decodes to a sequence of target tokens, which is what lets us
+# compute the draft's probability of a target token in the verifier.
+
+# Number of superword merges added on top of the base vocab, i.e. T - t.
+# Total vocab T = t + num_superword_merges (t = 128,256 for Llama-3). Larger values compress text
+# further but grow the embedding/output head (and the draft's softmax cost).
+num_superword_merges: 30000
+
+# SuperBPE (Liu et al., 2025) caps superwords at a few words to avoid
+# memorising long boilerplate strings.
+max_words_per_token: 4
+
+# Stop early if the most frequent remaining pair occurs fewer times than this.
+min_pair_count: 2
+
+# Newlines, sentence-ending punctuation (. ! ?) and special tokens are
+# "barriers": superwords never contain them (see superword.py).
+
+# Text used to learn the superword merges. Use the same mix as pretraining
+# so the merges reflect what the draft will see.
+train_data:
+  - hf_name: HuggingFaceFW/fineweb-edu
+    subset: sample-10BT
+    split: train
+    text_field: text
+    weight: 0.9
+  - hf_name: open-web-math/open-web-math
+    split: train
+    text_field: text
+    weight: 0.1
+# Merge learning is pure Python and holds all chunks in RAM, so keep this
+# modest: ~300 MB of text takes a few GB of RAM. Raise it on a big machine.
+num_train_bytes: 300_000_000
+# Skip each source's held-out documents (pretrain.yaml data.held_out_bytes) so
+# the tokenizer never sees the text we evaluate draft loss on.
+skip_bytes: 20_000_000

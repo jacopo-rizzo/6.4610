@@ -1,0 +1,7 @@
+# Target profile: Llama-3.1-8B-Instruct (the primary target).
+# Configs with `target_profile: targets/llama3.yaml` read these as ${target.*}.
+name: llama3
+hf_name: meta-llama/Llama-3.1-8B-Instruct
+tokenizer: tokenizer/llama3.yaml                  # standard drafts use this vocab
+superbpe_tokenizer: tokenizer/llama3_superbpe.yaml
+smoke_superbpe_tokenizer: smoke/llama3_superbpe.yaml

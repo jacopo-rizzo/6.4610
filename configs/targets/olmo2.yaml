@@ -1,0 +1,8 @@
+# Target profile: OLMo-2-7B-Instruct (second target, for robustness).
+# Use with any config: `target_profile=targets/olmo2.yaml`
+# (or TARGET=olmo2 for scripts/smoke_test.sh).
+name: olmo2
+hf_name: allenai/OLMo-2-1124-7B-Instruct
+tokenizer: tokenizer/olmo2.yaml
+superbpe_tokenizer: tokenizer/olmo2_superbpe.yaml
+smoke_superbpe_tokenizer: smoke/olmo2_superbpe.yaml

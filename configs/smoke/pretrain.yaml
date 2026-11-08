@@ -1,8 +1,12 @@
 # Smoke test: ~350 pretraining steps of the real 50M architecture on 50 MB.
-#   python scripts/pretokenize.py --config smoke/pretrain.yaml --tokenizer tokenizer/llama3.yaml
-#   python scripts/pretrain.py --config smoke/pretrain.yaml --tokenizer tokenizer/llama3.yaml
-# and the same with --tokenizer smoke/tokenizer_superbpe.yaml.
+#   python scripts/train/pretokenize.py --config smoke/pretrain.yaml --tokenizer standard
+#   python scripts/train/pretrain.py --config smoke/pretrain.yaml --tokenizer standard
+# and the same with --tokenizer superbpe.
 defaults: ../train/pretrain.yaml
+
+# Smoke runs use the small smoke SuperBPE tokenizer as "the SuperBPE tokenizer".
+target:
+  superbpe_tokenizer: ${target.smoke_superbpe_tokenizer}
 
 model: model/draft_50m.yaml
 

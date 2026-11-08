@@ -6,7 +6,6 @@ hf_name: meta-llama/Llama-3.1-8B-Instruct
 vocab_size: 128256        # 128000 BPE tokens + 256 reserved/special tokens
 
 special_tokens:
-  bos: "<|begin_of_text|>"
-  eos: "<|eot_id|>"       # end of an assistant turn in the chat template
-  eos_alt: "<|end_of_text|>"
+  end_of_turn: "<|eot_id|>"        # ends an assistant reply in the chat template
+  end_of_text: "<|end_of_text|>"   # separates pretraining documents
   pad: "<|finetune_right_pad_id|>"

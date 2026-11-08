@@ -1,11 +1,13 @@
 # Pretraining for the draft models. Run once per (model, tokenizer) pair:
-#   model:     model/draft_50m.yaml | model/draft_150m.yaml
-#   tokenizer: tokenizer/llama3.yaml | tokenizer/llama3_superbpe.yaml
+#   --model:     model/draft_50m.yaml | model/draft_150m.yaml
+#   --tokenizer: standard | superbpe   (the target's tokenizer or its SuperBPE one)
+# For OLMo-2 drafts add the override target_profile=targets/olmo2.yaml.
 #
 # Fair comparison: both tokenizers must see the SAME text. SuperBPE packs more
 # bytes into each token, so the training budget is set in bytes, not tokens.
+target_profile: targets/llama3.yaml
 model: model/draft_50m.yaml
-tokenizer: tokenizer/llama3.yaml
+tokenizer: ${target.tokenizer}
 
 data:
   mix:
@@ -25,7 +27,7 @@ data:
   train_bytes: 4_400_000_000
   held_out_bytes: 20_000_000   # for the loss-match check in the proposal
   seed: 0
-  # Written by scripts/pretokenize.py, one folder per tokenizer and budget.
+  # Written by scripts/train/pretokenize.py, one folder per tokenizer and budget.
   pretokenized_dir: ${oc.env:CKPT_DIR}/pretokenized
   num_workers: 8             # tokenizer processes for pretokenization
 

@@ -1,0 +1,11 @@
+# Target tokenizer of OLMo-2-7B-Instruct: a cl100k-based byte-level BPE.
+# The model's output layer has 100,352 rows, more than the tokenizer's ids;
+# the decoders only use the tokenizer's ids (see decoding/speculative.py).
+# Chat format: <|endoftext|><|user|>\n...\n<|assistant|>\n...<|endoftext|>
+name: olmo2
+hf_name: allenai/OLMo-2-1124-7B-Instruct
+
+special_tokens:
+  end_of_turn: "<|endoftext|>"     # OLMo-2 uses one token for both
+  end_of_text: "<|endoftext|>"
+  pad: "<|pad|>"

@@ -1,14 +1,15 @@
 """Pretrain a draft model on a pretokenized data mix.
 
-    python scripts/pretrain.py --model model/draft_50m.yaml --tokenizer tokenizer/llama3.yaml
-    python scripts/pretrain.py --model model/draft_50m.yaml --tokenizer tokenizer/llama3_superbpe.yaml
+    python scripts/train/pretrain.py --model model/draft_50m.yaml --tokenizer standard
+    python scripts/train/pretrain.py --model model/draft_50m.yaml --tokenizer superbpe
 
     # 150M: larger data budget (pretokenize it first) and lower lr
-    python scripts/pretrain.py --model model/draft_150m.yaml --tokenizer tokenizer/llama3.yaml \
+    python scripts/train/pretrain.py --model model/draft_150m.yaml --tokenizer standard \
         data.train_bytes=13_200_000_000 optim.lr=3e-4
 
-    # several GPUs
-    accelerate launch scripts/pretrain.py --model ... --tokenizer ...
+    # OLMo-2 drafts; several GPUs
+    python scripts/train/pretrain.py --tokenizer superbpe target_profile=targets/olmo2.yaml
+    accelerate launch scripts/train/pretrain.py --model ... --tokenizer ...
 
 Saves the final model to <output_dir>/<model>_<tokenizer> (e.g. draft_50m_llama3),
 loadable with superspec.models.load_causal_lm. Re-running the same command
@@ -23,7 +24,7 @@ from accelerate import Accelerator
 from accelerate.utils import set_seed
 from omegaconf import OmegaConf
 
-from superspec.config import load_config
+from superspec.config import load_config, resolve_tokenizer
 from superspec.data.token_files import TokenFile
 from superspec.eval.heldout import heldout_loss
 from superspec.tokenization import load_vocab
@@ -46,14 +47,15 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default="train/pretrain.yaml")
     parser.add_argument("--model", default=None, help="model config (default: from --config)")
-    parser.add_argument("--tokenizer", default=None, help="tokenizer config (default: from --config)")
+    parser.add_argument("--tokenizer", default=None,
+                        help="standard | superbpe (the target's tokenizers) or a tokenizer config")
     parser.add_argument("overrides", nargs="*", help="e.g. optim.lr=3e-4")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
 
     cfg = load_config(args.config, args.overrides)
     model_cfg = load_config(args.model or cfg.model)
-    vocab = load_vocab(args.tokenizer or cfg.tokenizer)
+    vocab = load_vocab(resolve_tokenizer(cfg, args.tokenizer))
     name = run_name(model_cfg.name, vocab.name)
     run_dir = Path(cfg.output_dir) / name
 

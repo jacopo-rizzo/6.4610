@@ -1,12 +1,13 @@
 """Distillation step 1 (run once): the target answers UltraChat prompts.
 
-    python scripts/distill_generate.py                       # vLLM if installed, else HF
-    python scripts/distill_generate.py generate.prompts.num_prompts=1000   # quick test
+    python scripts/train/distill_generate.py                  # vLLM if installed, else HF
+    python scripts/train/distill_generate.py generate.prompts.num_prompts=1000   # quick test
+    python scripts/train/distill_generate.py target_profile=targets/olmo2.yaml
 
 Writes one JSON line per prompt to generate.output_path:
     {"index", "prompt", "prompt_ids", "response_ids", "finished"}
-with ids in the target (Llama-3) vocabulary. `response_ids` ends with
-<|eot_id|> when the target finished its answer. Re-running resumes.
+with ids in the target's vocabulary. `response_ids` ends with the end-of-turn
+token (Llama-3 <|eot_id|>) when the target finished its answer. Re-running resumes.
 """
 
 import argparse
@@ -34,17 +35,17 @@ def load_prompts(prompt_cfg) -> list[str]:
 
 def clean_response(token_ids, finished: bool, stop_ids: set[int], eot_id: int) -> list[int]:
     """Drop any stop tokens the backend left at the end, then mark a finished answer
-    with <|eot_id|> so the drafts learn where the target stops."""
+    with the end-of-turn token so the drafts learn where the target stops."""
     ids = list(token_ids)
     while ids and ids[-1] in stop_ids:
         ids.pop()
     return ids + [eot_id] if finished else ids
 
 
-def generate_vllm(cfg, prompt_ids: list[list[int]], chunk_size: int = 4096):
+def generate_vllm(cfg, target_name: str, prompt_ids: list[list[int]], chunk_size: int = 4096):
     from vllm import LLM, SamplingParams
 
-    llm = LLM(model=cfg.target, dtype="bfloat16", seed=cfg.seed)
+    llm = LLM(model=target_name, dtype="bfloat16", seed=cfg.seed)
     params = SamplingParams(temperature=cfg.sampling.temperature, top_p=cfg.sampling.top_p,
                             max_tokens=cfg.sampling.max_new_tokens, seed=cfg.seed)
     # Generate in chunks so finished results are written (and resumable) as we go.
@@ -55,11 +56,11 @@ def generate_vllm(cfg, prompt_ids: list[list[int]], chunk_size: int = 4096):
             yield completion.token_ids, completion.finish_reason == "stop"
 
 
-def generate_hf(cfg, prompt_ids: list[list[int]], vocab, stop_ids, batch_size: int = 32):
+def generate_hf(cfg, target_name: str, prompt_ids: list[list[int]], vocab, stop_ids, pad_id: int,
+                batch_size: int = 32):
     from superspec.models import load_causal_lm
 
-    model = load_causal_lm(cfg.target)
-    pad_id = vocab.hf.convert_tokens_to_ids("<|finetune_right_pad_id|>")
+    model = load_causal_lm(target_name)
     torch.manual_seed(cfg.seed)
     for start in range(0, len(prompt_ids), batch_size):
         batch = prompt_ids[start:start + batch_size]
@@ -85,11 +86,15 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
 
-    cfg = load_config(args.config, args.overrides).generate
-    tokenizer_cfg = load_config(cfg.tokenizer)
+    full_cfg = load_config(args.config, args.overrides)
+    cfg, target = full_cfg.generate, full_cfg.target
+    tokenizer_cfg = load_config(target.tokenizer)
     vocab = load_vocab(tokenizer_cfg)
     stop_ids = stop_token_ids(vocab, tokenizer_cfg)
-    eot_id = vocab.hf.convert_tokens_to_ids(tokenizer_cfg.special_tokens.eos)
+    special = tokenizer_cfg.special_tokens
+    eot_id = vocab.hf.convert_tokens_to_ids(special.end_of_turn)
+    pad_id = vocab.hf.convert_tokens_to_ids(special.pad)
+    logger.info("Target %s", target.hf_name)
 
     out_path = Path(cfg.output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -108,8 +113,8 @@ def main():
         except ImportError:
             logger.warning("vLLM not installed, falling back to HF generate (much slower)")
             backend = "hf"
-    responses = (generate_vllm(cfg, prompt_ids) if backend == "vllm"
-                 else generate_hf(cfg, prompt_ids, vocab, stop_ids))
+    responses = (generate_vllm(cfg, target.hf_name, prompt_ids) if backend == "vllm"
+                 else generate_hf(cfg, target.hf_name, prompt_ids, vocab, stop_ids, pad_id))
 
     with open(out_path, "a") as f:
         for k, (token_ids, finished) in enumerate(responses):

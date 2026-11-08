@@ -4,10 +4,10 @@
 # Step 1 (generate): run the target on UltraChat prompts, save responses.
 #   This is shared by all drafts, so it only needs to run once.
 # Step 2 (train): fine-tune each pretrained draft on those responses.
+# For OLMo-2 add the override target_profile=targets/olmo2.yaml to both steps.
+target_profile: targets/llama3.yaml
 
 generate:
-  target: meta-llama/Llama-3.1-8B-Instruct
-  tokenizer: tokenizer/llama3.yaml
   prompts:
     hf_name: HuggingFaceH4/ultrachat_200k
     split: train_sft
@@ -18,13 +18,13 @@ generate:
     top_p: 1.0
     max_new_tokens: 1024
   backend: vllm              # pip install -e ".[generate]"; falls back to HF if absent
-  output_path: ${oc.env:CKPT_DIR}/distill_data/ultrachat_llama3.jsonl
+  output_path: ${oc.env:CKPT_DIR}/distill_data/ultrachat_${target.name}.jsonl
   seed: 0
 
 train:
-  # Pass model and tokenizer per run, e.g. train.model=model/draft_150m.yaml
+  # Usually set per run with --model / --tokenizer {standard,superbpe}.
   model: model/draft_50m.yaml
-  tokenizer: tokenizer/llama3.yaml
+  tokenizer: ${target.tokenizer}
   # Starts from <init_from>/<model>_<tokenizer>, the pretraining output.
   init_from: ${oc.env:CKPT_DIR}/drafts/pretrain
   data_path: ${generate.output_path}

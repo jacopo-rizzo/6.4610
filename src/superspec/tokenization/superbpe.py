@@ -1,11 +1,11 @@
-"""The SuperBPE draft tokenizer: Llama-3 tokens plus learned superwords.
+"""The SuperBPE draft tokenizer: the target's tokens plus learned superwords.
 
 Ids 0 .. t-1 are exactly the target's tokens; ids t .. T-1 are superwords,
 each standing for a fixed sequence of target tokens. Encoding text means
 tokenizing it with the target tokenizer, then applying the superword merges
 in the order they were learned (standard BPE), chunk by chunk.
 
-Saved layout (written by scripts/train_superbpe.py):
+Saved layout (written by scripts/train/train_superbpe.py):
     <dir>/superbpe.json    merges and settings
     <dir>/base/            the target tokenizer, so loading works offline
     <dir>/superwords.tsv   human-readable list of the superwords

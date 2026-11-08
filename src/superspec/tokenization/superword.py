@@ -6,7 +6,7 @@ SuperBPE (Liu et al., 2025) trains a tokenizer in two stages:
   2. BPE *without* whitespace splitting, so new merges can join tokens across
      spaces ("superwords" such as " of the"), up to a vocab size T.
 
-Stage 1 is the target's own tokenizer (Llama-3, t = 128,256), so we only learn
+Stage 1 is the target's own tokenizer (Llama-3: t = 128,256), so we only learn
 stage 2. We run it directly on sequences of target token ids: each new merge
 joins two existing ids (base tokens or earlier superwords) into a new id
 t, t+1, ... . Every superword therefore expands to a fixed sequence of target

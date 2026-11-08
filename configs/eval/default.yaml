@@ -1,23 +1,24 @@
 # Settings shared by every eval benchmark. Each benchmark config sets
 # `defaults: default.yaml` and only overrides what differs.
-target: meta-llama/Llama-3.1-8B-Instruct
-target_tokenizer: tokenizer/llama3.yaml
+# The target model (and its tokenizers) come from the profile; for OLMo-2
+# add the override target_profile=targets/olmo2.yaml.
+target_profile: targets/llama3.yaml
 dtype: bfloat16
 
 # Each entry is a distilled draft checkpoint plus the tokenizer it uses.
 drafts:
   - name: std_50m
-    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_50m_llama3
-    tokenizer: tokenizer/llama3.yaml
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_50m_${target.name}
+    tokenizer: ${target.tokenizer}
   - name: superbpe_50m
-    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_50m_llama3_superbpe
-    tokenizer: tokenizer/llama3_superbpe.yaml
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_50m_${target.name}_superbpe
+    tokenizer: ${target.superbpe_tokenizer}
   - name: std_150m
-    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_150m_llama3
-    tokenizer: tokenizer/llama3.yaml
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_150m_${target.name}
+    tokenizer: ${target.tokenizer}
   - name: superbpe_150m
-    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_150m_llama3_superbpe
-    tokenizer: tokenizer/llama3_superbpe.yaml
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_150m_${target.name}_superbpe
+    tokenizer: ${target.superbpe_tokenizer}
 
 # Plain autoregressive decoding with the target, the speed baseline.
 include_autoregressive_baseline: true
@@ -35,9 +36,10 @@ speculative:
   #   standard:    Leviathan et al. rejection sampling, shared vocabulary
   #   superword:   ours, rejection sampling with the first-token marginal
   #   exact_match: Timor et al. string-level exact match (lossless fallback)
+  # Keyed by the kind of draft tokenizer, whatever the target.
   methods:
-    llama3: [standard]
-    llama3_superbpe: [superword]
+    standard: [standard]
+    superbpe: [superword]
   # Also run exact_match on every draft, so the verification rule's effect on
   # speed and acceptance can be separated from the tokenizer's.
   also_run_exact_match: true
@@ -58,7 +60,7 @@ timing:
 
 save_outputs: true           # store generated text in results.jsonl
 
-# Losslessness check (scripts/eval_lossless.py): compare byte-level output
+# Losslessness check (scripts/eval/lossless.py): compare byte-level output
 # distributions of each speculative method against the target alone.
 lossless_check:
   num_prompts: 20
@@ -69,7 +71,7 @@ lossless_check:
   num_permutations: 2000
   draft_len_bytes: 32
 
-# Held-out loss (scripts/eval_heldout.py), in bits per byte.
+# Held-out loss (scripts/eval/heldout.py), in bits per byte.
 heldout:
   pretokenized_dir: ${oc.env:CKPT_DIR}/pretokenized
   budget: 4.4GB              # any budget folder works: the val split is the same text
@@ -78,4 +80,4 @@ heldout:
   max_windows: null          # null = whole val split (~20 MB of text)
 
 seed: 0
-output_dir: ${oc.env:RESULTS_DIR,./results}
+output_dir: ${oc.env:RESULTS_DIR,./results}/${target.name}

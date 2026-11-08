@@ -1,7 +1,7 @@
 """Distillation data: target responses to chat prompts, for supervised fine-tuning.
 
 Each example is a chat prompt (formatted with the target's chat template) and
-the target's own response, both stored as Llama-3 token ids. A draft re-encodes
+the target's own response, both stored as target token ids. A draft re-encodes
 them into its own vocabulary (`from_target_ids`), so the standard and SuperBPE
 drafts train on exactly the same text. The loss is on response tokens only.
 

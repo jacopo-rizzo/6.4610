@@ -1,7 +1,7 @@
 """Check empirically that speculative decoding samples from the target's distribution.
 
-    python scripts/eval_lossless.py --config eval/specbench.yaml
-    python scripts/eval_lossless.py --config eval/specbench.yaml lossless_check.num_prompts=5
+    python scripts/eval/lossless.py --config eval/specbench.yaml
+    python scripts/eval/lossless.py --config eval/specbench.yaml lossless_check.num_prompts=5
 
 Settings are under `lossless_check` in configs/eval/default.yaml. A lossless
 method has Fisher p not small and ~1% of per-prompt p-values below 0.01,

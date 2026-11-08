@@ -1,0 +1,7 @@
+# SuperBPE draft tokenizer on top of the OLMo-2 vocabulary.
+# Learn it once with: python scripts/train/train_superbpe.py --config tokenizer/olmo2_superbpe.yaml
+defaults: superbpe_common.yaml
+
+name: olmo2_superbpe
+base_tokenizer: tokenizer/olmo2.yaml
+output_dir: ${oc.env:CKPT_DIR}/tokenizers/olmo2_superbpe

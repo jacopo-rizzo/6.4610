@@ -1,0 +1,9 @@
+# Smoke test: a small SuperBPE tokenizer, learned in a few minutes.
+# Same name as the real one, so all name-based logic (eval methods, folder
+# names) behaves the same; it is saved under $CKPT_DIR/smoke instead.
+defaults: ../tokenizer/olmo2_superbpe.yaml
+
+num_superword_merges: 2000
+num_train_bytes: 50_000_000
+skip_bytes: 2_000_000          # = smoke held_out_bytes
+output_dir: ${oc.env:CKPT_DIR}/smoke/tokenizers/olmo2_superbpe

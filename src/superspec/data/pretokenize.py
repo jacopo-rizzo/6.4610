@@ -1,6 +1,6 @@
 """Tokenize a pretraining data mix once and store it as token files.
 
-Run through scripts/pretokenize.py. Tokenizing is split across worker
+Run through scripts/train/pretokenize.py. Tokenizing is split across worker
 processes; each worker loads the tokenizer once.
 """
 

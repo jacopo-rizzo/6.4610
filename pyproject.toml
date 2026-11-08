@@ -18,7 +18,7 @@ authors = [
 # version first (see https://pytorch.org/get-started/locally/), then this package.
 dependencies = [
     "torch>=2.3",
-    "transformers>=4.45",
+    "transformers>=4.47",   # 4.47+ for OLMo-2
     "tokenizers>=0.20",
     "datasets>=3.0",
     "accelerate>=1.0",

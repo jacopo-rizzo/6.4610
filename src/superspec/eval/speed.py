@@ -21,6 +21,7 @@ import torch
 from superspec.decoding import SamplingConfig, SpeculativeDecoder, autoregressive_generate
 from superspec.eval.common import Draft, Target, chat_prompt_ids
 from superspec.eval.prompts import Prompt
+from superspec.tokenization.vocab import vocab_kind
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def build_run_specs(cfg, drafts: dict[str, Draft]) -> list[RunSpec]:
         if cfg.get("include_autoregressive_baseline", True):
             specs.append(RunSpec(float(temperature), "autoregressive"))
         for name, draft in drafts.items():
-            methods = list(spec_cfg.methods.get(draft.vocab.name, []))
+            methods = list(spec_cfg.methods[vocab_kind(draft.vocab)])
             if spec_cfg.get("also_run_exact_match", False):
                 methods.append("exact_match" if spec_cfg.get("exact_match_retokenize", True)
                                else "exact_match_noretok")
