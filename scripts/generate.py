@@ -16,6 +16,7 @@ import torch
 
 from superspec.config import load_config, load_env
 from superspec.decoding import CachedLM, SamplingConfig, SpeculativeDecoder, autoregressive_generate
+from superspec.eval.common import chat_prompt_ids, stop_token_ids
 from superspec.models import load_causal_lm
 from superspec.tokenization import load_vocab
 
@@ -43,11 +44,8 @@ def main():
 
     target_cfg = load_config(args.target_tokenizer)
     target_vocab = load_vocab(target_cfg)
-    special = target_cfg.special_tokens
-    stop_ids = {target_vocab.hf.convert_tokens_to_ids(special[k]) for k in ("eos", "eos_alt")}
-
-    prompt = target_vocab.hf.apply_chat_template(
-        [{"role": "user", "content": args.prompt}], add_generation_prompt=True, tokenize=True)
+    stop_ids = stop_token_ids(target_vocab, target_cfg)
+    prompt = chat_prompt_ids(target_vocab, args.prompt)
     sampling = SamplingConfig(temperature=args.temperature, top_p=args.top_p)
     generator = torch.Generator(device=args.device).manual_seed(args.seed)
     target = CachedLM(load_causal_lm(args.target or target_cfg.hf_name, device=args.device))

@@ -47,7 +47,8 @@ class GenerationResult:
 
     def summary(self) -> dict:
         keys = ["num_bytes", "wall_time", "rounds", "draft_steps", "proposed_tokens",
-                "accepted_tokens", "draft_time", "target_time", "overhead_time"]
+                "accepted_tokens", "proposed_bytes", "accepted_bytes", "draft_time",
+                "target_time", "overhead_time"]
         out = {k: getattr(self, k) for k in keys}
         out.update(bytes_per_second=self.bytes_per_second,
                    token_acceptance_rate=self.token_acceptance_rate,

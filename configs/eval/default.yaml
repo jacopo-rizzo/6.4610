@@ -1,6 +1,8 @@
 # Settings shared by every eval benchmark. Each benchmark config sets
 # `defaults: default.yaml` and only overrides what differs.
 target: meta-llama/Llama-3.1-8B-Instruct
+target_tokenizer: tokenizer/llama3.yaml
+dtype: bfloat16
 
 # Each entry is a distilled draft checkpoint plus the tokenizer it uses.
 drafts:
@@ -39,32 +41,41 @@ speculative:
   # Also run exact_match on every draft, so the verification rule's effect on
   # speed and acceptance can be separated from the tokenizer's.
   also_run_exact_match: true
+  # exact_match re-encodes the draft's text with the target tokenizer (as in
+  # Timor et al.). false: use superword expansions directly instead, which
+  # changes only the verification rule relative to "superword".
+  exact_match_retokenize: true
 
 generation:
   max_new_tokens: 1024
-  batch_size: 1              # standard for latency measurements
-  use_chat_template: true
+  batch_size: 1              # only 1 is supported (standard for latency measurements)
 
 timing:
-  warmup_prompts: 5          # excluded from timing
-  cuda_sync: true
-  repeats: 1
+  warmup_prompts: 2          # generations run before each configuration, not recorded
+  # Sync the GPU between draft / target / overhead phases to time each one.
+  # Adds a little latency; set false for the cleanest end-to-end numbers.
+  phase_breakdown: true
 
-metrics:
-  - bytes_per_second         # primary speed metric (vocab-independent)
-  - speedup_vs_autoregressive
-  - token_acceptance_rate
-  - byte_acceptance_rate
-  - mean_accepted_bytes_per_step
-  - draft_steps_per_target_step
+save_outputs: true           # store generated text in results.jsonl
 
-# Losslessness check: compare byte-level output distributions of spec decoding
-# vs the target alone on repeated samples of the same prompts.
+# Losslessness check (scripts/eval_lossless.py): compare byte-level output
+# distributions of each speculative method against the target alone.
 lossless_check:
-  enabled: false             # turn on for the dedicated correctness runs
   num_prompts: 20
   samples_per_prompt: 200
   temperature: 1.0
+  max_new_tokens: 8          # only the start of each output is compared
+  prefix_bytes: 8            # outcome = first 8 bytes of output
+  num_permutations: 2000
+  draft_len_bytes: 32
+
+# Held-out loss (scripts/eval_heldout.py), in bits per byte.
+heldout:
+  pretokenized_dir: ${oc.env:CKPT_DIR}/pretokenized
+  budget: 4.4GB              # any budget folder works: the val split is the same text
+  context_bytes: 8192        # same context in bytes for both tokenizers
+  batch_size: 2
+  max_windows: null          # null = whole val split (~20 MB of text)
 
 seed: 0
 output_dir: ${oc.env:RESULTS_DIR,./results}

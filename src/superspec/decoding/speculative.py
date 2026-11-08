@@ -75,8 +75,8 @@ class SpeculativeDecoder:
         self.retokenize = retokenize
         self.time_phases = time_phases   # sync the GPU between phases to time each one
 
-    def _now(self) -> float:
-        if self.time_phases:
+    def _now(self, force_sync: bool = False) -> float:
+        if self.time_phases or force_sync:
             synchronize(self.target.device)
         return time.perf_counter()
 
@@ -98,7 +98,7 @@ class SpeculativeDecoder:
         self.drafter.lm.reset()
         result = GenerationResult(prompt_length=len(prompt), tokens=[], num_bytes=0, wall_time=0)
         tokens = list(prompt)
-        start = self._now()
+        start = self._now(force_sync=True)
 
         while len(tokens) - len(prompt) < max_new_tokens:
             remaining = max_new_tokens - (len(tokens) - len(prompt))
@@ -152,7 +152,7 @@ class SpeculativeDecoder:
             if stopped:
                 break
 
-        result.wall_time = self._now() - start
+        result.wall_time = self._now(force_sync=True) - start
         result.tokens = tokens[len(prompt):][:max_new_tokens]
         result.num_bytes = count_bytes(self.target_vocab, result.tokens, self.stop_ids)
         return result

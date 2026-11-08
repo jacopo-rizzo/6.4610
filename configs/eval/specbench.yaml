@@ -16,4 +16,7 @@ data:
     - qa
     - math_reasoning
     - rag
-  max_prompts: null          # null = all
+  # Spec-Bench has 80 prompts per category; a full sweep at 1024 new tokens takes
+  # many GPU hours, so start with a subset. null = all.
+  max_prompts_per_category: 10
+  max_prompts: null

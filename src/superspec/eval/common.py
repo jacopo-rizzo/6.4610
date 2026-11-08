@@ -1,0 +1,56 @@
+"""Loading the target, drafts and prompts for evaluation."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from superspec.config import load_config
+from superspec.decoding import CachedLM
+from superspec.models import load_causal_lm
+from superspec.tokenization import load_vocab
+
+
+@dataclass
+class Target:
+    lm: CachedLM
+    vocab: object
+    stop_ids: set[int]
+
+
+@dataclass
+class Draft:
+    name: str
+    lm: CachedLM
+    vocab: object
+
+
+def stop_token_ids(vocab, tokenizer_cfg) -> set[int]:
+    """Generation ends at <|eot_id|> (end of assistant turn) or <|end_of_text|>."""
+    special = tokenizer_cfg.special_tokens
+    return {vocab.hf.convert_tokens_to_ids(special[k]) for k in ("eos", "eos_alt") if k in special}
+
+
+def chat_prompt_ids(target_vocab, text: str) -> list[int]:
+    """A single user turn, formatted with the target's chat template."""
+    ids = target_vocab.hf.apply_chat_template(
+        [{"role": "user", "content": text}], add_generation_prompt=True, tokenize=True)
+    if hasattr(ids, "keys"):          # newer transformers may return a BatchEncoding
+        ids = ids["input_ids"]
+    return list(ids)
+
+
+def load_target(cfg, device: str) -> Target:
+    tokenizer_cfg = load_config(cfg.target_tokenizer)
+    vocab = load_vocab(tokenizer_cfg)
+    model = load_causal_lm(cfg.target, dtype=cfg.get("dtype", "bfloat16"), device=device)
+    return Target(CachedLM(model), vocab, stop_token_ids(vocab, tokenizer_cfg))
+
+
+def load_drafts(cfg, device: str, names: list[str] | None = None) -> dict[str, Draft]:
+    drafts = {}
+    for entry in cfg.drafts:
+        if names and entry.name not in names:
+            continue
+        model = load_causal_lm(entry.checkpoint, dtype=cfg.get("dtype", "bfloat16"), device=device)
+        drafts[entry.name] = Draft(entry.name, CachedLM(model), load_vocab(entry.tokenizer))
+    return drafts

@@ -22,6 +22,13 @@ python scripts/pretokenize.py --tokenizer tokenizer/llama3_superbpe.yaml
 # 3. Try a decoder on one prompt (autoregressive | standard | superword | exact_match)
 python scripts/generate.py --method autoregressive --prompt "Explain speculative decoding."
 
+# 4. Evaluate (settings in configs/eval/; results go to $RESULTS_DIR)
+python scripts/eval_heldout.py                                  # draft loss, bits/byte
+python scripts/eval_speed.py --config eval/specbench.yaml       # speed + acceptance
+python scripts/eval_speed.py --config eval/humaneval.yaml
+python scripts/eval_speed.py --config eval/mbpp.yaml
+python scripts/eval_lossless.py --config eval/specbench.yaml    # sampled outputs match target?
+
 # Tests (no GPU or downloads needed; test_decoding.py needs torch + transformers, ~3 min on CPU)
 pytest tests/
 ```
