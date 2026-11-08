@@ -8,14 +8,20 @@
 name: llama3_superbpe
 base_tokenizer: tokenizer/llama3.yaml
 
-# Number of superword merges added on top of the base vocab.
-# Total vocab = 128256 + num_superword_merges. Larger values compress text
+# Number of superword merges added on top of the base vocab, i.e. T - t.
+# Total vocab T = 128256 + num_superword_merges. Larger values compress text
 # further but grow the embedding/output head (and the draft's softmax cost).
-num_superword_merges: 32768
+num_superword_merges: 30000
 
 # SuperBPE (Liu et al., 2025) caps superwords at a few words to avoid
 # memorising long boilerplate strings.
 max_words_per_token: 4
+
+# Stop early if the most frequent remaining pair occurs fewer times than this.
+min_pair_count: 2
+
+# Newlines, sentence-ending punctuation (. ! ?) and special tokens are
+# "barriers": superwords never contain them (see superword.py).
 
 # Text used to learn the superword merges. Use the same mix as pretraining
 # so the merges reflect what the draft will see.
@@ -29,6 +35,11 @@ train_data:
     split: train
     text_field: text
     weight: 0.1
-num_train_bytes: 2_000_000_000   # ~2 GB of text is plenty for merge learning
+# Merge learning is pure Python and holds all chunks in RAM, so keep this
+# modest: ~300 MB of text takes a few GB of RAM. Raise it on a big machine.
+num_train_bytes: 300_000_000
+# Skip each source's held-out documents (pretrain.yaml data.held_out_bytes) so
+# the tokenizer never sees the text we evaluate draft loss on.
+skip_bytes: 20_000_000
 
 output_dir: ${oc.env:CKPT_DIR}/tokenizers/llama3_superbpe

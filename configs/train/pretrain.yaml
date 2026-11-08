@@ -25,6 +25,9 @@ data:
   train_bytes: 4_400_000_000
   held_out_bytes: 20_000_000   # for the loss-match check in the proposal
   seed: 0
+  # Written by scripts/pretokenize.py, one folder per tokenizer and budget.
+  pretokenized_dir: ${oc.env:CKPT_DIR}/pretokenized
+  num_workers: 8             # tokenizer processes for pretokenization
 
 seq_len: 2048
 # If true, the SuperBPE run shortens seq_len by its compression ratio so both
