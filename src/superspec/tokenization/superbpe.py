@@ -109,6 +109,9 @@ class SuperBPETokenizer:
             out.extend(self.expansion[i])
         return out
 
+    def expand(self, token_id: int) -> tuple[int, ...]:
+        return self.expansion[token_id]
+
     def decode(self, ids: list[int]) -> str:
         return self.base.decode(self.to_target_ids(ids))
 

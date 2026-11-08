@@ -2,6 +2,8 @@
 
 It splits text roughly like Llama-3's pretokenizer (leading space attached
 to words, punctuation and newlines separate) and gives each piece an id.
+Every single character of the corpus is also a token, so any text made of
+those characters can be encoded (unknown pieces fall back to characters).
 """
 
 from __future__ import annotations
@@ -18,14 +20,17 @@ class ToyVocab:
         self.special_ids = {0, 1}
         self.bos_id, self.eos_id = 0, 1
         for text in corpus:
-            for p in PIECE.findall(text):
+            for p in PIECE.findall(text) + list(text):
                 if p not in self.pieces:
                     self.pieces.append(p)
         self.index = {p: i for i, p in enumerate(self.pieces)}
         self.vocab_size = self.target_vocab_size = len(self.pieces)
 
     def encode(self, text):
-        return [self.index[p] for p in PIECE.findall(text)]
+        ids = []
+        for p in PIECE.findall(text):
+            ids.extend([self.index[p]] if p in self.index else [self.index[c] for c in p])
+        return ids
 
     def encode_batch(self, texts):
         return [self.encode(t) for t in texts]
@@ -38,6 +43,9 @@ class ToyVocab:
 
     def to_target_ids(self, ids):
         return list(ids)
+
+    def expand(self, i):
+        return (i,)
 
     def from_target_ids(self, ids):
         return list(ids)

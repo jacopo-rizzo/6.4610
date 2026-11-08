@@ -19,7 +19,10 @@ python scripts/train_superbpe.py --config tokenizer/llama3_superbpe.yaml
 python scripts/pretokenize.py --tokenizer tokenizer/llama3.yaml
 python scripts/pretokenize.py --tokenizer tokenizer/llama3_superbpe.yaml
 
-# Tests (no GPU or downloads needed)
+# 3. Try a decoder on one prompt (autoregressive | standard | superword | exact_match)
+python scripts/generate.py --method autoregressive --prompt "Explain speculative decoding."
+
+# Tests (no GPU or downloads needed; test_decoding.py needs torch + transformers, ~3 min on CPU)
 pytest tests/
 ```
 

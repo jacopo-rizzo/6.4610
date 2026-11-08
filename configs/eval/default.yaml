@@ -23,15 +23,22 @@ include_autoregressive_baseline: true
 speculative:
   # Draft proposal length is fixed in BYTES so the token granularity of the
   # two tokenizers does not confound the comparison. Sweep over these.
+  # The draft stops after the token that reaches the limit.
   draft_len_bytes: [16, 32, 64]
+  max_draft_steps: 16          # safety cap on draft forward passes per round
+  max_target_tokens_per_round: 64
   temperatures: [0.0, 0.7, 1.0]
   top_p: 1.0
-  # superword_marginal: our verifier (sum q(w) over superwords starting with t)
-  # string_level: lossless fallback for mismatched vocabularies (Timor et al., 2025)
-  verifier: superword_marginal
-  # Also run the SuperBPE verifier's overhead on the standard draft so the
-  # extra verification cost is accounted for.
-  measure_verifier_overhead: true
+  # Decoding method per draft tokenizer (see superspec/decoding/speculative.py):
+  #   standard:    Leviathan et al. rejection sampling, shared vocabulary
+  #   superword:   ours, rejection sampling with the first-token marginal
+  #   exact_match: Timor et al. string-level exact match (lossless fallback)
+  methods:
+    llama3: [standard]
+    llama3_superbpe: [superword]
+  # Also run exact_match on every draft, so the verification rule's effect on
+  # speed and acceptance can be separated from the tokenizer's.
+  also_run_exact_match: true
 
 generation:
   max_new_tokens: 1024
