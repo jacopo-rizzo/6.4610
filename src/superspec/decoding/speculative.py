@@ -115,6 +115,7 @@ class SpeculativeDecoder:
             t2 = self._now()
             if self.method == "exact_match" and self.retokenize:
                 proposal = self._to_target_strings(proposal, max_tokens)
+            t2b = self._now()
 
             k = len(proposal)
             # The output layer can have more rows than the tokenizer has ids (OLMo-2:
@@ -150,8 +151,8 @@ class SpeculativeDecoder:
                                                  proposal.target_tokens[:accepted], self.stop_ids)
             result.accepted_per_round.append(accepted)
             result.draft_time += t2 - t1
-            result.target_time += t3 - t2
-            result.overhead_time += (t1 - t0) + (t4 - t3)
+            result.target_time += t3 - t2b
+            result.overhead_time += (t1 - t0) + (t2b - t2) + (t4 - t3)
             if stopped:
                 break
 
