@@ -1,0 +1,34 @@
+# SuperBPE draft tokenizer, built on top of the Llama-3 vocabulary.
+#
+# We keep every Llama-3 token and its merges, then continue BPE training
+# *without* whitespace pretokenization, so the new merges are superwords
+# (concatenations of target tokens that can span spaces). Every superword
+# therefore decodes to a sequence of target tokens, which is what lets us
+# compute the draft's probability of a target token in the verifier.
+name: llama3_superbpe
+base_tokenizer: tokenizer/llama3.yaml
+
+# Number of superword merges added on top of the base vocab.
+# Total vocab = 128256 + num_superword_merges. Larger values compress text
+# further but grow the embedding/output head (and the draft's softmax cost).
+num_superword_merges: 32768
+
+# SuperBPE (Liu et al., 2025) caps superwords at a few words to avoid
+# memorising long boilerplate strings.
+max_words_per_token: 4
+
+# Text used to learn the superword merges. Use the same mix as pretraining
+# so the merges reflect what the draft will see.
+train_data:
+  - hf_name: HuggingFaceFW/fineweb-edu
+    subset: sample-10BT
+    split: train
+    text_field: text
+    weight: 0.9
+  - hf_name: open-web-math/open-web-math
+    split: train
+    text_field: text
+    weight: 0.1
+num_train_bytes: 2_000_000_000   # ~2 GB of text is plenty for merge learning
+
+output_dir: ${oc.env:CKPT_DIR}/tokenizers/llama3_superbpe

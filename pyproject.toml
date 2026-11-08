@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "superspec"
+version = "0.1.0"
+description = "Speculative decoding with a SuperBPE (superword) tokenized draft model"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Skyler Mao" },
+    { name = "Rohan Das" },
+    { name = "Sounak Bagchi" },
+    { name = "Jacopo Rizzo" },
+]
+# torch is deliberately left unpinned: install the build that matches your CUDA
+# version first (see https://pytorch.org/get-started/locally/), then this package.
+dependencies = [
+    "torch>=2.3",
+    "transformers>=4.45",
+    "tokenizers>=0.20",
+    "datasets>=3.0",
+    "accelerate>=1.0",
+    "huggingface-hub>=0.25",
+    "omegaconf>=2.3",
+    "python-dotenv>=1.0",
+    "numpy",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+logging = ["wandb"]
+generate = ["vllm"]   # fast target generation for distillation data
+dev = ["pytest", "ruff"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/superspec"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

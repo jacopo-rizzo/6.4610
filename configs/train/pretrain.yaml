@@ -1,0 +1,58 @@
+# Pretraining for the draft models. Run once per (model, tokenizer) pair:
+#   model:     model/draft_50m.yaml | model/draft_150m.yaml
+#   tokenizer: tokenizer/llama3.yaml | tokenizer/llama3_superbpe.yaml
+#
+# Fair comparison: both tokenizers must see the SAME text. SuperBPE packs more
+# bytes into each token, so the training budget is set in bytes, not tokens.
+model: model/draft_50m.yaml
+tokenizer: tokenizer/llama3.yaml
+
+data:
+  mix:
+    - hf_name: HuggingFaceFW/fineweb-edu
+      subset: sample-10BT
+      split: train
+      text_field: text
+      weight: 0.9
+    - hf_name: open-web-math/open-web-math
+      split: train
+      text_field: text
+      weight: 0.1
+  # ~20 tokens/param (Chinchilla) at ~4.4 bytes per Llama-3 token, counted
+  # on non-embedding params. Override per model:
+  #   draft_50m  -> 4.4e9 bytes  (~1B Llama-3 tokens)
+  #   draft_150m -> 13.2e9 bytes (~3B Llama-3 tokens)
+  train_bytes: 4_400_000_000
+  held_out_bytes: 20_000_000   # for the loss-match check in the proposal
+  seed: 0
+
+seq_len: 2048
+# If true, the SuperBPE run shortens seq_len by its compression ratio so both
+# drafts see the same number of bytes of context per example.
+match_context_bytes: true
+
+optim:
+  name: adamw
+  lr: 6.0e-4                 # use ~3e-4 for draft_150m
+  betas: [0.9, 0.95]
+  weight_decay: 0.1
+  grad_clip: 1.0
+  schedule: cosine
+  warmup_frac: 0.01
+  min_lr_frac: 0.1
+
+batch:
+  tokens_per_step: 524288    # 256 sequences x 2048 tokens
+  micro_batch_size: 16       # per GPU; gradient accumulation fills the rest
+
+precision: bf16
+compile: true
+seed: 0
+
+logging:
+  every_steps: 20
+  eval_every_steps: 1000
+  wandb: ${oc.env:WANDB_MODE,disabled}
+
+output_dir: ${oc.env:CKPT_DIR}/drafts/pretrain
+save_every_steps: 2000

@@ -1,0 +1,12 @@
+# Target tokenizer: the standard BPE vocabulary of Llama-3.1.
+# The "standard" draft models use this tokenizer unchanged, so their vocab
+# matches the target exactly and plain token-level verification works.
+name: llama3
+hf_name: meta-llama/Llama-3.1-8B-Instruct
+vocab_size: 128256        # 128000 BPE tokens + 256 reserved/special tokens
+
+special_tokens:
+  bos: "<|begin_of_text|>"
+  eos: "<|eot_id|>"       # end of an assistant turn in the chat template
+  eos_alt: "<|end_of_text|>"
+  pad: "<|finetune_right_pad_id|>"

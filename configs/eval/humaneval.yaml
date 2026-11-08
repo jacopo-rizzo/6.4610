@@ -1,0 +1,14 @@
+# HumanEval (Chen et al., 2021): 164 Python function-completion problems.
+# Code has few superwords, so this is the setting where SuperBPE should help least.
+defaults: default.yaml
+name: humaneval
+
+data:
+  hf_name: openai/openai_humaneval
+  split: test
+  prompt_field: prompt
+  instruction: "Complete the following Python function. Respond with only the code."
+  max_prompts: null
+
+generation:
+  max_new_tokens: 512

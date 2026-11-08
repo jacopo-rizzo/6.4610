@@ -1,0 +1,63 @@
+# Settings shared by every eval benchmark. Each benchmark config sets
+# `defaults: default.yaml` and only overrides what differs.
+target: meta-llama/Llama-3.1-8B-Instruct
+
+# Each entry is a distilled draft checkpoint plus the tokenizer it uses.
+drafts:
+  - name: std_50m
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_50m_llama3
+    tokenizer: tokenizer/llama3.yaml
+  - name: superbpe_50m
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_50m_llama3_superbpe
+    tokenizer: tokenizer/llama3_superbpe.yaml
+  - name: std_150m
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_150m_llama3
+    tokenizer: tokenizer/llama3.yaml
+  - name: superbpe_150m
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_150m_llama3_superbpe
+    tokenizer: tokenizer/llama3_superbpe.yaml
+
+# Plain autoregressive decoding with the target, the speed baseline.
+include_autoregressive_baseline: true
+
+speculative:
+  # Draft proposal length is fixed in BYTES so the token granularity of the
+  # two tokenizers does not confound the comparison. Sweep over these.
+  draft_len_bytes: [16, 32, 64]
+  temperatures: [0.0, 0.7, 1.0]
+  top_p: 1.0
+  # superword_marginal: our verifier (sum q(w) over superwords starting with t)
+  # string_level: lossless fallback for mismatched vocabularies (Timor et al., 2025)
+  verifier: superword_marginal
+  # Also run the SuperBPE verifier's overhead on the standard draft so the
+  # extra verification cost is accounted for.
+  measure_verifier_overhead: true
+
+generation:
+  max_new_tokens: 1024
+  batch_size: 1              # standard for latency measurements
+  use_chat_template: true
+
+timing:
+  warmup_prompts: 5          # excluded from timing
+  cuda_sync: true
+  repeats: 1
+
+metrics:
+  - bytes_per_second         # primary speed metric (vocab-independent)
+  - speedup_vs_autoregressive
+  - token_acceptance_rate
+  - byte_acceptance_rate
+  - mean_accepted_bytes_per_step
+  - draft_steps_per_target_step
+
+# Losslessness check: compare byte-level output distributions of spec decoding
+# vs the target alone on repeated samples of the same prompts.
+lossless_check:
+  enabled: false             # turn on for the dedicated correctness runs
+  num_prompts: 20
+  samples_per_prompt: 200
+  temperature: 1.0
+
+seed: 0
+output_dir: ${oc.env:RESULTS_DIR,./results}

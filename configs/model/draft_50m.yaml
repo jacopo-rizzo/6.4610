@@ -1,0 +1,23 @@
+# ~50M-parameter Llama-style draft model.
+#
+# Parameter counts below are NON-embedding. With a 128k vocab the (tied)
+# embedding adds another ~66M params, and the SuperBPE vocab adds more on top
+# of that, so we match the two drafts on non-embedding size, which is what
+# drives per-step latency apart from the output softmax.
+#
+# Non-embedding params ≈ 50.3M.
+name: draft_50m
+architecture: llama        # built with transformers.LlamaConfig
+
+hidden_size: 512
+num_layers: 16
+num_attention_heads: 8
+num_key_value_heads: 4     # grouped-query attention
+intermediate_size: 1536    # SwiGLU MLP width
+max_position_embeddings: 2048
+rope_theta: 500000.0       # same as Llama-3
+rms_norm_eps: 1.0e-5
+tie_word_embeddings: true  # keeps the large-vocab head affordable
+
+# vocab_size is filled in from the tokenizer config at build time, so the
+# same file serves both the standard and the SuperBPE draft.

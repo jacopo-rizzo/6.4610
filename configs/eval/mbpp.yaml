@@ -1,0 +1,14 @@
+# MBPP (Austin et al., 2021), sanitized split: 257 short Python tasks.
+defaults: default.yaml
+name: mbpp
+
+data:
+  hf_name: google-research-datasets/mbpp
+  subset: sanitized
+  split: test
+  prompt_field: prompt
+  instruction: "Write a Python function for the following task. Respond with only the code."
+  max_prompts: null
+
+generation:
+  max_new_tokens: 512

@@ -1,0 +1,25 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Large or generated artifacts
+checkpoints/
+results/
+wandb/
+*.safetensors
+*.pt
+*.bin
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
