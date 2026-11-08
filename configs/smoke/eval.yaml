@@ -1,0 +1,38 @@
+# Smoke test: run each eval script once on the smoke drafts, a few prompts each.
+#   python scripts/eval_heldout.py --config smoke/eval.yaml
+#   python scripts/eval_speed.py --config smoke/eval.yaml --output-dir $RESULTS_DIR/smoke/specbench
+#   python scripts/eval_lossless.py --config smoke/eval.yaml
+defaults: ../eval/specbench.yaml
+
+drafts:
+  - name: std_50m
+    checkpoint: ${oc.env:CKPT_DIR}/smoke/drafts/distill/draft_50m_llama3
+    tokenizer: tokenizer/llama3.yaml
+  - name: superbpe_50m
+    checkpoint: ${oc.env:CKPT_DIR}/smoke/drafts/distill/draft_50m_llama3_superbpe
+    tokenizer: smoke/tokenizer_superbpe.yaml
+
+data:
+  max_prompts_per_category: 1  # one prompt from each of the 6 categories
+
+speculative:
+  draft_len_bytes: [32]
+  temperatures: [0.0, 1.0]
+
+generation:
+  max_new_tokens: 64
+
+timing:
+  warmup_prompts: 1
+
+lossless_check:
+  num_prompts: 2
+  samples_per_prompt: 20
+  num_permutations: 200
+
+heldout:
+  pretokenized_dir: ${oc.env:CKPT_DIR}/smoke/pretokenized
+  budget: 0.05GB
+  max_windows: 50
+
+output_dir: ${oc.env:RESULTS_DIR,./results}/smoke

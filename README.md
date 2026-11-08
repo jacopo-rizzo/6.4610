@@ -9,7 +9,19 @@ pip install -e ".[dev]"
 cp .env.example .env       # fill in HF_TOKEN, HF_HOME, CKPT_DIR
 ```
 
-## Pipeline so far
+## Smoke test (start here)
+
+Runs the whole pipeline with tiny budgets (configs/smoke/) on one GPU in
+roughly 30-60 minutes, writing only under `$CKPT_DIR/smoke` and
+`$RESULTS_DIR/smoke`, then checks every saved artifact:
+
+```bash
+bash scripts/smoke_test.sh                 # unit tests + all steps + checks
+FROM_STEP=4 bash scripts/smoke_test.sh     # resume from a step after fixing something
+python scripts/check_smoke_outputs.py      # just the checks
+```
+
+## Pipeline
 
 ```bash
 # 1. One-time: learn the SuperBPE draft tokenizer (Llama-3 vocab + 30k superwords)

@@ -1,0 +1,24 @@
+# Smoke test: ~350 pretraining steps of the real 50M architecture on 50 MB.
+#   python scripts/pretokenize.py --config smoke/pretrain.yaml --tokenizer tokenizer/llama3.yaml
+#   python scripts/pretrain.py --config smoke/pretrain.yaml --tokenizer tokenizer/llama3.yaml
+# and the same with --tokenizer smoke/tokenizer_superbpe.yaml.
+defaults: ../train/pretrain.yaml
+
+model: model/draft_50m.yaml
+
+data:
+  train_bytes: 50_000_000      # -> folder name "0.05GB"
+  held_out_bytes: 2_000_000
+  pretokenized_dir: ${oc.env:CKPT_DIR}/smoke/pretokenized
+
+batch:
+  sequences_per_step: 16
+  micro_batch_size: 4
+
+logging:
+  every_steps: 10
+  eval_every_steps: 100
+  eval_windows: 20
+
+output_dir: ${oc.env:CKPT_DIR}/smoke/drafts/pretrain
+save_every_steps: 100

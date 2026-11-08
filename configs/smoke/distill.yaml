@@ -1,0 +1,24 @@
+# Smoke test: 200 target responses, then a short fine-tune of each smoke draft.
+#   python scripts/distill_generate.py --config smoke/distill.yaml
+#   python scripts/distill_train.py --config smoke/distill.yaml train.tokenizer=tokenizer/llama3.yaml
+defaults: ../train/distill.yaml
+
+generate:
+  prompts:
+    num_prompts: 200
+  sampling:
+    max_new_tokens: 256
+  output_path: ${oc.env:CKPT_DIR}/smoke/distill_data/ultrachat_llama3.jsonl
+
+train:
+  init_from: ${oc.env:CKPT_DIR}/smoke/drafts/pretrain
+  val_every: 10                # 20 of the 200 prompts held out
+  epochs: 1
+  examples_per_step: 16
+  micro_batch_size: 8
+  logging:
+    every_steps: 2
+    eval_every_steps: 5
+  eval_examples: null
+  save_every_steps: 5
+  output_dir: ${oc.env:CKPT_DIR}/smoke/drafts/distill
