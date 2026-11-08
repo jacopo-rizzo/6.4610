@@ -18,7 +18,13 @@ import json
 import torch
 
 from superspec.config import load_config, resolve_config_path
-from superspec.decoding import CachedLM, SamplingConfig, SpeculativeDecoder, autoregressive_generate
+from superspec.decoding import (
+    METHODS,
+    CachedLM,
+    SamplingConfig,
+    SpeculativeDecoder,
+    autoregressive_generate,
+)
 from superspec.eval.common import chat_prompt_ids, stop_token_ids
 from superspec.models import load_causal_lm
 from superspec.tokenization import load_vocab
@@ -28,7 +34,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--method", default="superword",
-                        choices=["autoregressive", "standard", "superword", "exact_match"])
+                        choices=["autoregressive", *METHODS])
     parser.add_argument("--prompt", default="Explain speculative decoding in two paragraphs.")
     parser.add_argument("--target-profile", default="targets/llama3.yaml")
     parser.add_argument("--draft", default=None, help="draft model checkpoint")
@@ -40,6 +46,9 @@ def main():
     parser.add_argument("--draft-bytes", type=int, default=32)
     parser.add_argument("--no-retokenize", action="store_true",
                         help="exact_match: use superword expansions instead of re-encoding text")
+    parser.add_argument("--time-phases", action="store_true",
+                        help="sync the GPU between phases so draft/target times are accurate "
+                             "(slows decoding a little)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
@@ -64,7 +73,8 @@ def main():
         draft = CachedLM(load_causal_lm(args.draft, device=args.device))
         decoder = SpeculativeDecoder(target, target_vocab, draft, draft_vocab, args.method,
                                      sampling, stop_ids, max_draft_bytes=args.draft_bytes,
-                                     retokenize=not args.no_retokenize)
+                                     retokenize=not args.no_retokenize,
+                                     time_phases=args.time_phases)
         result = decoder.generate(prompt, args.max_new_tokens, generator)
 
     print(target_vocab.decode(result.tokens))

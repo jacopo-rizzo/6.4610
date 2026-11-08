@@ -57,6 +57,8 @@ def decoders(setup, sampling, **kwargs):
         "standard": SpeculativeDecoder(t, base, CachedLM(std_draft), base, "standard", **common),
         "superword": SpeculativeDecoder(t, base, CachedLM(super_draft), superbpe, "superword",
                                         **common),
+        "superword_pointmass": SpeculativeDecoder(t, base, CachedLM(super_draft), superbpe,
+                                                  "superword_pointmass", **common),
         "exact_match": SpeculativeDecoder(t, base, CachedLM(super_draft), superbpe,
                                           "exact_match", **common),
         "exact_match_no_retok": SpeculativeDecoder(t, base, CachedLM(super_draft), superbpe,
@@ -80,9 +82,10 @@ def test_cache_matches_full_forward(setup):
         assert lm.tokens == tokens
 
 
-def test_superword_proposal_rows(setup):
+@pytest.mark.parametrize("rows", ["length_aware", "point_mass"])
+def test_superword_proposal_rows(setup, rows):
     _, superbpe, _, _, super_draft, prompt = setup
-    drafter = Drafter(CachedLM(super_draft), superbpe, superbpe.target_vocab_size)
+    drafter = Drafter(CachedLM(super_draft), superbpe, superbpe.target_vocab_size, rows=rows)
     gen = torch.Generator().manual_seed(0)
     seen_superword = False
     for _ in range(20):
@@ -91,11 +94,35 @@ def test_superword_proposal_rows(setup):
         assert superbpe.to_target_ids(p.draft_tokens) == p.target_tokens
         for i, (row, src) in enumerate(zip(p.q_rows, p.source)):
             first_of_draft_token = i == 0 or p.source[i - 1] != src
-            assert (row is not None) == first_of_draft_token
+            if rows == "point_mass":
+                assert (row is not None) == first_of_draft_token
+            else:
+                assert row is not None
             if row is not None:
                 assert abs(float(row.sum()) - 1) < 1e-5 and row[p.target_tokens[i]] > 0
         seen_superword |= any(superbpe.is_superword(w) for w in p.draft_tokens)
     assert seen_superword
+
+
+def test_length_aware_row_matches_definition(setup):
+    """q_j(x) ∝ sum of q(v) over v with len(v) > j, v[:j] == w[:j], v[j] == x."""
+    _, superbpe, _, _, super_draft, _ = setup
+    drafter = Drafter(CachedLM(super_draft), superbpe, superbpe.target_vocab_size)
+    q = torch.rand(superbpe.vocab_size, generator=torch.Generator().manual_seed(0))
+    q = q / q.sum()
+    checked = 0
+    for w in range(superbpe.target_vocab_size, superbpe.vocab_size):
+        e = superbpe.expand(w)
+        for j in range(1, len(e)):
+            expected = torch.zeros(superbpe.target_vocab_size)
+            for v in range(superbpe.vocab_size):
+                ev = superbpe.expand(v)
+                if len(ev) > j and ev[:j] == e[:j]:
+                    expected[ev[j]] += q[v]
+            expected /= expected.sum()
+            torch.testing.assert_close(drafter.later_token_row(q, e, j), expected)
+            checked += 1
+    assert checked > 0
 
 
 def test_greedy_matches_autoregressive(setup):
@@ -126,8 +153,8 @@ def total_variation(counts, joint, n):
     return 0.5 * sum(abs(counts.get(k, 0) / n - joint.get(k, 0.0)) for k in keys)
 
 
-@pytest.mark.parametrize("method", ["standard", "superword", "exact_match",
-                                    "exact_match_no_retok"])
+@pytest.mark.parametrize("method", ["standard", "superword", "superword_pointmass",
+                                    "exact_match", "exact_match_no_retok"])
 def test_sampling_is_lossless(setup, method):
     """Sampled outputs must follow the target's own distribution. We compare the
     first two tokens (generating six, so multi-token superwords get verified)
@@ -150,3 +177,21 @@ def test_sampling_is_lossless(setup, method):
              for _ in range(200)]
     threshold = 1.3 * np.quantile(noise, 0.995)
     assert tv < threshold, f"{method}: TV {tv:.4f} vs noise threshold {threshold:.4f}"
+
+
+def test_cost_ratio_measurement(setup):
+    from superspec.eval.common import Draft
+    from superspec.eval.cost import context_from_texts, measure_cost_ratios
+
+    base, superbpe, target, std_draft, super_draft, _ = setup
+    drafts = {"std": Draft("std", CachedLM(std_draft), base),
+              "super": Draft("super", CachedLM(super_draft), superbpe)}
+    context = context_from_texts(["One of the best parts of the day is the morning."], base, 40)
+    assert len(context) == 40
+    rows = measure_cost_ratios(CachedLM(target), base, drafts, context, verify_tokens=4,
+                               reps=3, warmup=1)
+    assert [r["draft"] for r in rows] == ["std", "super"]
+    for r in rows:
+        assert r["c"] > 0 and r["draft_step_ms"] > 0
+    # SuperBPE packs the same text into fewer draft tokens.
+    assert rows[1]["context_draft_tokens"] < rows[0]["context_draft_tokens"]

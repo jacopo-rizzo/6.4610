@@ -1,5 +1,6 @@
 # HumanEval (Chen et al., 2021): 164 Python function-completion problems.
-# Code has few superwords, so this is the setting where SuperBPE should help least.
+# Code may contain fewer superwords than prose (newlines block merges), so this
+# tests where SuperBPE should help least. The pretraining mix includes Python.
 defaults: default.yaml
 name: humaneval
 

@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import re
 
-PIECE = re.compile(r" ?[A-Za-z]+| ?[0-9]+| ?[^\sA-Za-z0-9]+|\s+")
+# Special tokens are matched first, so their text encodes back to their id, as
+# HF tokenizers do (needed when exact_match re-encodes a draft's text).
+PIECE = re.compile(r"<bos>|<eos>| ?[A-Za-z]+| ?[0-9]+| ?[^\sA-Za-z0-9<]+| ?<|\s+")
 
 
 class ToyVocab:

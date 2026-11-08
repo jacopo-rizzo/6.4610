@@ -11,7 +11,8 @@ from superspec.decoding.autoregressive import autoregressive_generate
 from superspec.decoding.kv_cache import CachedLM
 from superspec.decoding.result import GenerationResult
 from superspec.decoding.sampling import SamplingConfig
-from superspec.decoding.speculative import METHODS, SpeculativeDecoder
+from superspec.decoding.speculative import CONTROL_METHODS, METHODS, SpeculativeDecoder
 
-__all__ = ["CachedLM", "GenerationResult", "METHODS", "SamplingConfig", "SpeculativeDecoder",
+__all__ = ["CONTROL_METHODS", "CachedLM", "GenerationResult", "METHODS", "SamplingConfig",
+           "SpeculativeDecoder",
            "autoregressive_generate"]

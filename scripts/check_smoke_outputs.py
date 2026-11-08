@@ -135,7 +135,8 @@ def main():
         assert (speed / "summary.csv").exists()
         runs = {r["run"] for r in rows}
         methods = {r["method"] for r in rows}
-        assert {"autoregressive", "standard", "superword", "exact_match"} <= methods, methods
+        assert {"autoregressive", "standard", "superword", "superword_pointmass",
+                "exact_match"} <= methods, methods
         assert len(rows) == len(runs) * len({r["prompt_id"] for r in rows}), "missing rows"
         return f"{len(runs)} runs x {len(rows) // len(runs)} prompts"
 
@@ -143,7 +144,14 @@ def main():
     def _():
         report = json.loads((results_dir / "specbench" / "lossless.json").read_text())
         assert "autoregressive (control)" in report
+        assert any(m.endswith("control_wrong_marginal") for m in report), "no biased control"
         return ", ".join(f"{m}: p={r['fisher_p']:.2f}" for m, r in report.items())
+
+    @check("eval: draft/target cost ratio")
+    def _():
+        rows = json.loads((results_dir / "specbench" / "cost_ratio.json").read_text())
+        assert {r["draft"] for r in rows} == {d.name for d in eval_cfg.drafts}
+        return ", ".join(f"{r['draft']} c={r['c']:.3f}" for r in rows)
 
     width = max(len(n) for _, n, _ in results)
     for ok, name, detail in results:

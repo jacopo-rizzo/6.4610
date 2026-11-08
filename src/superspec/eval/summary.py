@@ -4,6 +4,14 @@ Speed is reported in bytes per second (not tokens: the vocabularies differ),
 computed as total bytes / total time over all prompts of a run, and as a
 speedup over the autoregressive baseline at the same temperature (and, for
 per-category rows, the same category).
+
+Also reported, for the speedup model S = (1 - a^(g+1)) / ((1 - a)(g c + 1)):
+  target_tokens_per_draft_step  proposed target tokens / draft forward passes,
+                                the m in "g draft steps cover about m g tokens"
+                                (1 for a standard draft, > 1 with superwords);
+  draft_ms_per_step, target_ms_per_pass, and the time fractions, only for runs
+  with timing.phase_breakdown=true. Without GPU syncs between phases those
+  times measure kernel launches, not GPU work, so they are left empty.
 """
 
 from __future__ import annotations
@@ -34,6 +42,8 @@ def summarize(results_path: Path) -> list[dict]:
             for field in SUM_FIELDS:
                 t[field] += row[field]
             t["prompts"] += 1
+            # Rows written before this field existed were always phase-synced.
+            t["phases_synced"] = t.get("phases_synced", True) and row.get("phase_breakdown", True)
 
     baseline = {(t["temperature"], t["category"]): t["num_bytes"] / t["wall_time"]
                 for t in totals.values() if t["method"] == "autoregressive" and t["wall_time"]}
@@ -43,6 +53,7 @@ def summarize(results_path: Path) -> list[dict]:
         bps = t["num_bytes"] / t["wall_time"] if t["wall_time"] else 0.0
         base = baseline.get((t["temperature"], t["category"]))
         rounds = t["rounds"] or 1
+        synced = t["phases_synced"] and t["method"] != "autoregressive"
         summary.append({
             "temperature": t["temperature"], "category": t["category"], "method": t["method"],
             "draft": t["draft"], "draft_len_bytes": t["draft_len_bytes"], "prompts": t["prompts"],
@@ -52,9 +63,14 @@ def summarize(results_path: Path) -> list[dict]:
             "byte_acceptance": _ratio(t["accepted_bytes"], t["proposed_bytes"]),
             "accepted_bytes_per_round": round(t["accepted_bytes"] / rounds, 2),
             "draft_steps_per_round": round(t["draft_steps"] / rounds, 2),
-            "draft_time_frac": _ratio(t["draft_time"], t["wall_time"]),
-            "target_time_frac": _ratio(t["target_time"], t["wall_time"]),
-            "overhead_time_frac": _ratio(t["overhead_time"], t["wall_time"]),
+            "target_tokens_per_draft_step": _ratio(t["proposed_tokens"], t["draft_steps"]),
+            "draft_ms_per_step":
+                _ratio(1000 * t["draft_time"], t["draft_steps"]) if synced else None,
+            "target_ms_per_pass":
+                _ratio(1000 * t["target_time"], t["rounds"]) if synced else None,
+            "draft_time_frac": _ratio(t["draft_time"], t["wall_time"]) if synced else None,
+            "target_time_frac": _ratio(t["target_time"], t["wall_time"]) if synced else None,
+            "overhead_time_frac": _ratio(t["overhead_time"], t["wall_time"]) if synced else None,
         })
     summary.sort(key=lambda s: (s["category"] != "all", s["category"], s["temperature"],
                                 s["method"] != "autoregressive", str(s["draft"]),
@@ -74,7 +90,8 @@ def _ratio(a: float, b: float) -> float | None:
 
 def format_table(summary: list[dict], category: str = "all") -> str:
     cols = ["temperature", "method", "draft", "draft_len_bytes", "bytes_per_second", "speedup",
-            "token_acceptance", "byte_acceptance", "accepted_bytes_per_round"]
+            "token_acceptance", "byte_acceptance", "accepted_bytes_per_round",
+            "target_tokens_per_draft_step"]
     rows = [s for s in summary if s["category"] == category]
     widths = {c: max([len(c)] + [len(str(r[c])) for r in rows]) for c in cols}
     lines = ["  ".join(c.ljust(widths[c]) for c in cols)]

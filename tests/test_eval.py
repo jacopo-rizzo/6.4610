@@ -80,6 +80,30 @@ def test_summary_speedup_and_acceptance():
     assert by[("superword", "all")]["byte_acceptance"] == 0.5
     assert by[("superword", "all")]["accepted_bytes_per_round"] == 10.0
     assert "superword" in format_table(summary)
+    # Old rows (no phase_breakdown field) were phase-synced, so times are reported.
+    assert by[("superword", "all")]["draft_time_frac"] == 0.0
+
+
+def test_summary_tokens_per_step_and_unsynced_phases():
+    rows = [
+        row("ar", "autoregressive", "qa", 1000, 10.0, phase_breakdown=False),
+        row("sw", "superword", "qa", 1000, 5.0, "d", 32, rounds=10, draft_steps=20,
+            proposed_tokens=50, draft_time=1.0, target_time=3.0, phase_breakdown=False),
+        row("sw_sync", "superword", "qa", 1000, 5.0, "d", 16, rounds=10, draft_steps=20,
+            proposed_tokens=50, draft_time=1.0, target_time=3.0, phase_breakdown=True),
+    ]
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "results.jsonl"
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        summary = [s for s in summarize(path) if s["category"] == "all"]
+
+    by = {(s["method"], s["draft_len_bytes"]): s for s in summary}
+    unsynced, synced = by[("superword", 32)], by[("superword", 16)]
+    assert unsynced["target_tokens_per_draft_step"] == 2.5
+    assert unsynced["draft_ms_per_step"] is None and unsynced["draft_time_frac"] is None
+    assert synced["draft_ms_per_step"] == 50.0       # 1 s / 20 steps
+    assert synced["target_ms_per_pass"] == 300.0     # 3 s / 10 rounds
+    assert synced["draft_time_frac"] == 0.2
 
 
 if __name__ == "__main__":

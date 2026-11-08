@@ -1,16 +1,25 @@
 """Speculative decoding: the draft proposes, the target verifies in one pass.
 
-Three methods, all lossless:
+Methods, all lossless:
 
-  "standard"     Leviathan et al. (2023). Draft and target share a vocabulary.
-  "superword"    Ours. The draft uses the SuperBPE vocabulary; each superword
-                 expands to several target tokens, verified with the first-token
-                 marginal / point-mass rule (see verification.py).
-  "exact_match"  Timor et al. (2025) string-level exact match, our fallback that
-                 works for any draft tokenizer. With retokenize=True the draft's
-                 text is re-encoded with the target tokenizer, as in the paper;
-                 with retokenize=False the superword expansions are used
-                 directly, which isolates the effect of the verification rule.
+  "standard"            Leviathan et al. (2023). Draft and target share a vocabulary.
+  "superword"           Ours. The draft uses the SuperBPE vocabulary; each superword
+                        expands to several target tokens. The first is checked
+                        against the first-token marginal, later ones against the
+                        length-aware rows (see drafting.py / verification.py).
+  "superword_pointmass" Same, but later tokens of a superword are checked against
+                        a point mass. Accepts less often; kept as an ablation of
+                        the verification rule.
+  "exact_match"         Timor et al. (2025) string-level exact match, our fallback
+                        that works for any draft tokenizer. With retokenize=True the
+                        draft's text is re-encoded with the target tokenizer, as in
+                        the paper; with retokenize=False the superword expansions
+                        are used directly, which isolates the effect of the
+                        verification rule.
+
+CONTROL_METHODS are deliberately NOT lossless. They exist only so the
+empirical losslessness check (eval/lossless.py) can show it detects a bug:
+  "control_wrong_marginal"  first-token row ignores superwords' mass.
 
 One round:
   1. Re-tokenize the current text (target ids) into draft ids. For a SuperBPE
@@ -35,7 +44,18 @@ from superspec.decoding.result import GenerationResult, count_bytes
 from superspec.decoding.sampling import SamplingConfig
 from superspec.decoding.verification import verify_exact_match, verify_rejection
 
-METHODS = ("standard", "superword", "exact_match")
+METHODS = ("standard", "superword", "superword_pointmass", "exact_match")
+CONTROL_METHODS = ("control_wrong_marginal",)
+SUPERWORD_METHODS = ("superword", "superword_pointmass", "control_wrong_marginal")
+
+# Which q rows the drafter builds for each method (see drafting.ROW_RULES).
+ROWS_FOR_METHOD = {
+    "standard": "length_aware",          # no superwords, so only first-token rows
+    "superword": "length_aware",
+    "superword_pointmass": "point_mass",
+    "exact_match": "none",               # needs no draft probabilities
+    "control_wrong_marginal": "wrong_marginal",
+}
 
 
 class SpeculativeDecoder:
@@ -52,20 +72,21 @@ class SpeculativeDecoder:
         max_draft_steps: int = 16,
         max_target_tokens_per_round: int = 64,
         retokenize: bool = True,
-        time_phases: bool = True,
+        time_phases: bool = False,
     ):
-        if method not in METHODS:
+        if method not in METHODS + CONTROL_METHODS:
             raise ValueError(f"method must be one of {METHODS}, got {method!r}")
         if method == "standard" and draft_vocab.vocab_size != target_vocab.vocab_size:
             raise ValueError("'standard' needs the draft to use the target vocabulary; "
                              "use 'superword' or 'exact_match' for a SuperBPE draft")
-        if method == "superword" and not hasattr(draft_vocab, "merges"):
-            raise ValueError("'superword' needs a SuperBPE draft vocabulary")
+        if method in SUPERWORD_METHODS and not hasattr(draft_vocab, "merges"):
+            raise ValueError(f"{method!r} needs a SuperBPE draft vocabulary")
 
         self.target = target
         self.target_vocab = target_vocab
         self.draft_vocab = draft_vocab
-        self.drafter = Drafter(draft, draft_vocab, target_vocab.vocab_size)
+        self.drafter = Drafter(draft, draft_vocab, target_vocab.vocab_size,
+                               rows=ROWS_FOR_METHOD[method])
         self.method = method
         self.sampling = sampling
         self.stop_ids = set(stop_ids)
@@ -73,7 +94,9 @@ class SpeculativeDecoder:
         self.max_draft_steps = max_draft_steps
         self.max_target_tokens_per_round = max_target_tokens_per_round
         self.retokenize = retokenize
-        self.time_phases = time_phases   # sync the GPU between phases to time each one
+        # Sync the GPU between phases to time each one. This adds latency that the
+        # autoregressive baseline does not pay, so leave it off for speed numbers.
+        self.time_phases = time_phases
 
     def _now(self, force_sync: bool = False) -> float:
         if self.time_phases or force_sync:

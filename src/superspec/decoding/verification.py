@@ -12,14 +12,22 @@ Rejection sampling (Leviathan et al., 2023), used for standard and superword
 drafts. For a proposed token x drawn from q, accept with probability
 min(1, p(x) / q(x)); on rejection, sample from max(p - q, 0), renormalized.
 This outputs exactly p for *any* q, as long as q is the distribution x was
-really drawn from given everything decided so far. With superwords:
-  * at the first token of a draft token, q is the draft's marginal over first
-    target tokens (sum of q(w) over superwords w starting with t);
-  * at later tokens of a superword, the superword is already decided, so q is
-    a point mass: accept with probability p(x), else sample p with x removed.
-Conditioning on the chosen superword is allowed because the accept/reject
-decisions before it only looked at target tokens, never at which superword
-produced them.
+really drawn from given everything decided so far plus, optionally, any extra
+facts about the draft's own random choices. (Given those facts the output is
+p, whatever they are, so it is p overall.) The accept/reject decisions only
+look at target tokens and fresh uniforms, never at which superword produced
+them, so after accepting a prefix the drawn superword w is distributed as the
+draft's q restricted to superwords consistent with that prefix. With
+superwords (rows are built in drafting.py):
+  * first token of a draft token: q is the draft's marginal over first target
+    tokens (sum of q(w) over draft tokens w starting with t);
+  * token j >= 1 of superword w, "length_aware" rule: condition on the fact
+    that w is longer than j. Then x is distributed as
+        q_j(x) ∝ sum of q(v) over v with len(v) > j, v[:j] == w[:j], v[j] == x;
+  * token j >= 1, "point_mass" rule: condition on w itself, so q is a point
+    mass: accept with probability p(x), else sample p with x removed.
+Both are exact; the length-aware rule accepts at least as often, since
+sum_x min(q_j(x), p(x)) >= sum_x q_j(x) p(x).
 
 String-level exact match (SLEM, Timor et al., 2025), our fallback for
 unrelated vocabularies. Sample y from p; accept iff y == x; otherwise output

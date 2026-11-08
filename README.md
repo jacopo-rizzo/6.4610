@@ -51,8 +51,11 @@ python scripts/eval/speed.py --config eval/specbench.yaml       # speed + accept
 python scripts/eval/speed.py --config eval/humaneval.yaml
 python scripts/eval/speed.py --config eval/mbpp.yaml
 python scripts/eval/lossless.py --config eval/specbench.yaml    # sampled outputs match target?
+python scripts/eval/cost_ratio.py --config eval/specbench.yaml  # draft/target step latency c
+# Speedups use timing.phase_breakdown=false (no GPU syncs). For per-phase times,
+# run again with timing.phase_breakdown=true as a separate diagnostic.
 
-# Try a decoder on one prompt (autoregressive | standard | superword | exact_match)
+# Try a decoder on one prompt (autoregressive | standard | superword | superword_pointmass | exact_match)
 python scripts/eval/generate.py --method autoregressive --prompt "Explain speculative decoding."
 
 # Tests (no GPU or downloads needed; test_decoding.py needs torch + transformers, ~3 min on CPU)

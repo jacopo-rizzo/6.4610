@@ -66,6 +66,7 @@ if step 6 "eval scripts on a few prompts"; then
     python scripts/eval/speed.py --config smoke/eval.yaml \
         --output-dir "$RESULTS_DIR/smoke/$TARGET/specbench/speed" "$PROFILE"
     python scripts/eval/lossless.py --config smoke/eval.yaml "$PROFILE"
+    python scripts/eval/cost_ratio.py --config smoke/eval.yaml --reps 10 "$PROFILE"
 fi
 
 echo; echo "=== checking saved outputs ==="

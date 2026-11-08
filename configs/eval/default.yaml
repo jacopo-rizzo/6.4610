@@ -34,12 +34,14 @@ speculative:
   top_p: 1.0
   # Decoding method per draft tokenizer (see superspec/decoding/speculative.py):
   #   standard:    Leviathan et al. rejection sampling, shared vocabulary
-  #   superword:   ours, rejection sampling with the first-token marginal
+  #   superword:   ours, rejection sampling with the first-token marginal and
+  #                length-aware rows for later superword tokens
+  #   superword_pointmass: ablation, later superword tokens vs a point mass
   #   exact_match: Timor et al. string-level exact match (lossless fallback)
   # Keyed by the kind of draft tokenizer, whatever the target.
   methods:
     standard: [standard]
-    superbpe: [superword]
+    superbpe: [superword, superword_pointmass]
   # Also run exact_match on every draft, so the verification rule's effect on
   # speed and acceptance can be separated from the tokenizer's.
   also_run_exact_match: true
@@ -55,8 +57,10 @@ generation:
 timing:
   warmup_prompts: 2          # generations run before each configuration, not recorded
   # Sync the GPU between draft / target / overhead phases to time each one.
-  # Adds a little latency; set false for the cleanest end-to-end numbers.
-  phase_breakdown: true
+  # The syncs add latency to speculative runs only (the autoregressive
+  # baseline has none), so keep this false for reported speedups. Set it true
+  # in a separate diagnostic run to get draft_ms_per_step / target_ms_per_pass.
+  phase_breakdown: false
 
 save_outputs: true           # store generated text in results.jsonl
 
@@ -70,6 +74,9 @@ lossless_check:
   prefix_bytes: 8            # outcome = first 8 bytes of output
   num_permutations: 2000
   draft_len_bytes: 32
+  # Also run a deliberately biased method on SuperBPE drafts; it should fail,
+  # which shows the check can detect a bug (see eval/lossless.py).
+  include_biased_control: true
 
 # Held-out loss (scripts/eval/heldout.py), in bits per byte.
 heldout:

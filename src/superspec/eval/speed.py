@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class RunSpec:
     temperature: float
-    method: str                      # autoregressive | standard | superword | exact_match[_noretok]
+    method: str                      # autoregressive | a METHODS entry | exact_match_noretok
     draft: str | None = None
     draft_len_bytes: int | None = None
 
@@ -72,7 +72,7 @@ def make_generate_fn(spec: RunSpec, cfg, target: Target, drafts: dict[str, Draft
         max_draft_steps=cfg.speculative.get("max_draft_steps", 16),
         max_target_tokens_per_round=cfg.speculative.get("max_target_tokens_per_round", 64),
         retokenize=spec.method != "exact_match_noretok",
-        time_phases=cfg.timing.get("phase_breakdown", True),
+        time_phases=cfg.timing.get("phase_breakdown", False),
     )
     return lambda prompt, gen: decoder.generate(prompt, max_new, gen)
 
@@ -110,7 +110,9 @@ def run_benchmark(cfg, target: Target, drafts: dict[str, Draft], prompts: list[P
                 gen = torch.Generator(device=device).manual_seed(cfg.seed + i)
                 result = generate(prompt_ids[i], gen)
                 row = {"run": spec.key, **asdict(spec), "prompt_id": prompts[i].id,
-                       "category": prompts[i].category, **result.summary()}
+                       "category": prompts[i].category,
+                       "phase_breakdown": bool(cfg.timing.get("phase_breakdown", False)),
+                       **result.summary()}
                 if cfg.get("save_outputs", True):
                     row["output"] = target.vocab.decode(result.tokens)
                 f.write(json.dumps(row) + "\n")

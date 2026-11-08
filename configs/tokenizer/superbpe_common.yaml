@@ -22,17 +22,24 @@ min_pair_count: 2
 # Newlines, sentence-ending punctuation (. ! ?) and special tokens are
 # "barriers": superwords never contain them (see superword.py).
 
-# Text used to learn the superword merges. Use the same mix as pretraining
-# so the merges reflect what the draft will see.
+# Text used to learn the superword merges. Keep this the SAME mix (sources and
+# weights) as configs/train/pretrain.yaml: the merges should reflect what the
+# draft will see, and skip_bytes below only lines up with the held-out split
+# when the weights match. Python code is included so the HumanEval/MBPP evals
+# measure few superwords in code, not a tokenizer and draft that never saw code.
 train_data:
   - hf_name: HuggingFaceFW/fineweb-edu
     subset: sample-10BT
     split: train
     text_field: text
-    weight: 0.9
+    weight: 0.8
   - hf_name: open-web-math/open-web-math
     split: train
     text_field: text
+    weight: 0.1
+  - hf_name: codeparrot/codeparrot-clean
+    split: train
+    text_field: content
     weight: 0.1
 # Merge learning is pure Python and holds all chunks in RAM, so keep this
 # modest: ~300 MB of text takes a few GB of RAM. Raise it on a big machine.

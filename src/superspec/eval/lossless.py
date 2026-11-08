@@ -9,6 +9,12 @@ combined p-value is not small. A buggy method shows up as many tiny p-values.
 
 This complements tests/test_lossless_math.py (exact, on toy distributions) by
 running the real decoding code on the real models.
+
+To show the check can catch a bug, SuperBPE drafts also run a deliberately
+biased method ("control_wrong_marginal", see decoding/speculative.py). Its
+p-values should be small. If they are not, the check has too little power at
+these settings (raise samples_per_prompt or prefix_bytes) and a passing
+result for the real methods means little.
 """
 
 from __future__ import annotations
@@ -55,6 +61,8 @@ def run_lossless_check(cfg, target: Target, drafts: dict[str, Draft], prompts: l
     methods = {}
     for name, draft in drafts.items():
         names = list(cfg.speculative.methods[vocab_kind(draft.vocab)]) + ["exact_match"]
+        if lc.get("include_biased_control", True) and vocab_kind(draft.vocab) == "superbpe":
+            names.append("control_wrong_marginal")
         for method in names:
             decoder = SpeculativeDecoder(
                 target.lm, target.vocab, draft.lm, draft.vocab, method, sampling,
@@ -81,6 +89,7 @@ def run_lossless_check(cfg, target: Target, drafts: dict[str, Draft], prompts: l
 
     return {
         m: {"p_values": ps, "fisher_p": fisher_combined_p(ps),
-            "frac_below_0.01": float(np.mean(np.array(ps) < 0.01))}
+            "frac_below_0.01": float(np.mean(np.array(ps) < 0.01)),
+            "expected": "biased" if m.endswith("control_wrong_marginal") else "lossless"}
         for m, ps in p_values.items()
     }

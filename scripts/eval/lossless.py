@@ -5,7 +5,8 @@
 
 Settings are under `lossless_check` in configs/eval/default.yaml. A lossless
 method has Fisher p not small and ~1% of per-prompt p-values below 0.01,
-like the autoregressive control.
+like the autoregressive control. The "control_wrong_marginal" rows are biased
+on purpose: they should have a small Fisher p, which shows the check has power.
 """
 
 import argparse
@@ -40,9 +41,9 @@ def main():
     out = Path(cfg.output_dir) / cfg.name / "lossless.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2))
-    print(f"{'method':<36}{'fisher p':>10}{'frac p<0.01':>13}")
+    print(f"{'method':<44}{'fisher p':>10}{'frac p<0.01':>13}  expected")
     for method, r in report.items():
-        print(f"{method:<36}{r['fisher_p']:>10.4f}{r['frac_below_0.01']:>13.3f}")
+        print(f"{method:<44}{r['fisher_p']:>10.4f}{r['frac_below_0.01']:>13.3f}  {r['expected']}")
     print(f"Saved to {out}")
 
 
