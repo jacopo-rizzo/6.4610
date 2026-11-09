@@ -26,10 +26,20 @@ SUM_FIELDS = ["num_bytes", "wall_time", "rounds", "draft_steps", "proposed_token
 
 
 def summarize(results_path: Path) -> list[dict]:
-    """Aggregate rows per (run, category), plus an 'all' category per run."""
+    """Aggregate a results.jsonl into summary.csv (next to it) and return the rows."""
     with open(results_path) as f:
         rows = [json.loads(line) for line in f]
+    summary = aggregate(rows)
+    out = results_path.parent / "summary.csv"
+    with open(out, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(summary[0]))
+        writer.writeheader()
+        writer.writerows(summary)
+    return summary
 
+
+def aggregate(rows: list[dict]) -> list[dict]:
+    """Aggregate per-prompt rows per (run, category), plus an 'all' category per run."""
     totals: dict[tuple[str, str], dict] = {}
     for row in rows:
         for category in (row["category"], "all"):
@@ -75,12 +85,6 @@ def summarize(results_path: Path) -> list[dict]:
     summary.sort(key=lambda s: (s["category"] != "all", s["category"], s["temperature"],
                                 s["method"] != "autoregressive", str(s["draft"]),
                                 s["method"], s["draft_len_bytes"] or 0))
-
-    out = results_path.parent / "summary.csv"
-    with open(out, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(summary[0]))
-        writer.writeheader()
-        writer.writerows(summary)
     return summary
 
 

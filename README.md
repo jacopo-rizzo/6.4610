@@ -55,6 +55,10 @@ python scripts/eval/cost_ratio.py --config eval/specbench.yaml  # draft/target s
 # Speedups use timing.phase_breakdown=false (no GPU syncs). For per-phase times,
 # run again with timing.phase_breakdown=true as a separate diagnostic.
 
+# 5. Charts from the speed results (pip install -e ".[analysis]")
+python scripts/analysis/make_charts.py                   # everything under $RESULTS_DIR
+python scripts/analysis/make_charts.py --methods all     # also the verification ablations
+
 # Try a decoder on one prompt (autoregressive | standard | superword | superword_pointmass | exact_match)
 python scripts/eval/generate.py --method autoregressive --prompt "Explain speculative decoding."
 
