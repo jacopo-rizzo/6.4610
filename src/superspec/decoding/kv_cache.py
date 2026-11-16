@@ -49,7 +49,14 @@ class CachedLM:
         if length == 0:
             self.cache = DynamicCache()
         else:
-            self.cache.crop(length)
+            # A negative count means "remove this many tokens" in every transformers
+            # version. A positive count meant "keep this many" before 5.18 and no
+            # longer does, which would silently corrupt the cache.
+            self.cache.crop(length - len(self.tokens))
+            cached = self.cache.get_seq_length()
+            if cached != length:
+                raise RuntimeError(f"KV cache holds {cached} tokens after rollback, "
+                                   f"expected {length}")
         self.tokens = self.tokens[:length]
 
     @torch.no_grad()
