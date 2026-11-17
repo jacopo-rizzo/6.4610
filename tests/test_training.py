@@ -94,7 +94,8 @@ def test_resume_continues_from_checkpoint():
         # Pretend the run was killed after step 5, then resume to 15 steps.
         (d / "run" / "metrics.jsonl").write_text("\n".join(lines[:1]) + "\n")
         run_training(build_draft_model(TINY, tok.vocab_size), get, 15, d / "run", save_every=5)
-        steps = [json.loads(x)["step"] for x in (d / "run" / "metrics.jsonl").read_text().split()]
+        logged = (d / "run" / "metrics.jsonl").read_text().splitlines()
+        steps = [json.loads(x)["step"] for x in logged]
         assert steps == [5, 10, 15]       # resumed at step 5, did not start over
 
 

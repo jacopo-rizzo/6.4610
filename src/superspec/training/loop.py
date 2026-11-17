@@ -49,6 +49,8 @@ class MetricsLog:
     def __init__(self, run_dir: Path, run_name: str, config: dict, wandb_mode: str, enabled: bool):
         self.enabled = enabled
         self.path = run_dir / "metrics.jsonl"
+        if enabled:
+            run_dir.mkdir(parents=True, exist_ok=True)
         self.wandb = None
         if enabled and wandb_mode not in (None, "disabled"):
             import os
