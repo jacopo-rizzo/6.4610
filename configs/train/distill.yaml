@@ -31,6 +31,11 @@ train:
   val_every: 100             # every 100th prompt is held out (1%)
   max_seq_len: 2048          # tokens; longer responses are cut
   epochs: 2
+  # SuperBPE drafts only: tokenize training responses in randomly cut segments, a cut at
+  # each target-token boundary with this probability (mean segment = 1 / rate tokens,
+  # about one speculative round). Teaches the draft the contexts that rounds start from,
+  # which fully merged text never shows (see superspec/training/distill.py). 0 = off.
+  superword_cut_rate: 0.1
   optim:
     name: adamw
     lr: 1.0e-4

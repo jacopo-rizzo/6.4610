@@ -21,6 +21,7 @@ from transformers import AutoModelForCausalLM
 
 from superspec.config import load_config, resolve_tokenizer
 from superspec.tokenization import load_vocab
+from superspec.tokenization.vocab import vocab_kind
 from superspec.training.distill import (
     DistillBatches,
     build_examples,
@@ -83,7 +84,11 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(init_dir, torch_dtype=torch.float32)
     optimizer = make_optimizer(model, cfg.optim)
     model, optimizer = accelerator.prepare(model, optimizer)
-    batches = DistillBatches(train_examples, pad_id=vocab.eos_id, seed=cfg.seed)
+    # Round-start cuts only change SuperBPE tokenization (see training/distill.py).
+    cut_rate = cfg.get("superword_cut_rate", 0.0) if vocab_kind(vocab) == "superbpe" else 0.0
+    logger.info("superword cut rate: %g", cut_rate)
+    batches = DistillBatches(train_examples, pad_id=vocab.eos_id, seed=cfg.seed, vocab=vocab,
+                             cut_rate=cut_rate, max_len=max_len)
 
     def get_micro_batch(i):
         return batches.batch(micro_batch_indices(i, accelerator.process_index,
@@ -102,7 +107,8 @@ def main():
 
     if accelerator.is_main_process:
         save_draft(accelerator.unwrap_model(model), run_dir, vocab,
-                   extra={"stage": "distill", "init_from": str(init_dir), "steps": total_steps})
+                   extra={"stage": "distill", "init_from": str(init_dir), "steps": total_steps,
+                          "superword_cut_rate": cut_rate})
         logger.info("Saved %s", run_dir)
 
 
