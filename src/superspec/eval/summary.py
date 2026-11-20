@@ -20,6 +20,8 @@ import csv
 import json
 from pathlib import Path
 
+ROUND_START_FIELDS = ["rounds_clean", "rounds_mid", "first_accepted_clean",
+                      "first_accepted_mid", "accepted_tokens_clean", "accepted_tokens_mid"]
 SUM_FIELDS = ["num_bytes", "wall_time", "rounds", "draft_steps", "proposed_tokens",
               "accepted_tokens", "proposed_bytes", "accepted_bytes", "draft_time",
               "target_time", "overhead_time", "num_tokens"]
@@ -47,10 +49,13 @@ def aggregate(rows: list[dict]) -> list[dict]:
             if key not in totals:
                 totals[key] = {k: row[k] for k in ("temperature", "method", "draft",
                                                    "draft_len_bytes")}
-                totals[key].update({f: 0.0 for f in SUM_FIELDS}, category=category, prompts=0)
+                totals[key].update({f: 0.0 for f in SUM_FIELDS + ROUND_START_FIELDS},
+                                   category=category, prompts=0)
             t = totals[key]
             for field in SUM_FIELDS:
                 t[field] += row[field]
+            for field in ROUND_START_FIELDS:     # rows from before these fields existed: 0
+                t[field] += row.get(field, 0)
             t["prompts"] += 1
             # Rows written before this field existed were always phase-synced.
             t["phases_synced"] = t.get("phases_synced", True) and row.get("phase_breakdown", True)
@@ -74,6 +79,16 @@ def aggregate(rows: list[dict]) -> list[dict]:
             "accepted_bytes_per_round": round(t["accepted_bytes"] / rounds, 2),
             "draft_steps_per_round": round(t["draft_steps"] / rounds, 2),
             "target_tokens_per_draft_step": _ratio(t["proposed_tokens"], t["draft_steps"]),
+            "accepted_tokens_per_round": _ratio(t["accepted_tokens"], t["rounds"]),
+            # Round starts: share that began mid-superword, and how often the first proposed
+            # token was accepted in each kind (None for rows without these fields).
+            "mid_superword_round_frac": _ratio(t["rounds_mid"],
+                                               t["rounds_clean"] + t["rounds_mid"]),
+            "first_token_accept_clean": _ratio(t["first_accepted_clean"], t["rounds_clean"]),
+            "first_token_accept_mid": _ratio(t["first_accepted_mid"], t["rounds_mid"]),
+            "accepted_tokens_per_round_clean": _ratio(t["accepted_tokens_clean"],
+                                                      t["rounds_clean"]),
+            "accepted_tokens_per_round_mid": _ratio(t["accepted_tokens_mid"], t["rounds_mid"]),
             "draft_ms_per_step":
                 _ratio(1000 * t["draft_time"], t["draft_steps"]) if synced else None,
             "target_ms_per_pass":

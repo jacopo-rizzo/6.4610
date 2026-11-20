@@ -106,6 +106,48 @@ def test_summary_tokens_per_step_and_unsynced_phases():
     assert synced["draft_time_frac"] == 0.2
 
 
+def test_summary_round_start_columns():
+    rows = [
+        row("ar", "autoregressive", "qa", 1000, 10.0),
+        row("sw", "superword", "qa", 1000, 5.0, "d", 16, rounds=10, accepted_tokens=6,
+            rounds_clean=8, rounds_mid=2, first_accepted_clean=4, first_accepted_mid=1,
+            accepted_tokens_clean=5, accepted_tokens_mid=1),
+        row("old", "superword", "qa", 1000, 5.0, "d", 32, rounds=10),      # no new fields
+    ]
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "results.jsonl"
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        by = {s["draft_len_bytes"]: s for s in summarize(path) if s["category"] == "all"}
+    assert by[16]["mid_superword_round_frac"] == 0.2
+    assert by[16]["first_token_accept_clean"] == 0.5 and by[16]["first_token_accept_mid"] == 0.5
+    assert by[16]["accepted_tokens_per_round"] == 0.6
+    assert by[32]["mid_superword_round_frac"] is None
+
+
+def test_specbench_category_groups():
+
+    from superspec.eval import prompts as prompts_module
+
+    class Cfg(dict):
+        __getattr__ = dict.get
+
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "q.jsonl"
+        names = ["writing"] * 4 + ["math"] * 4 + ["qa"] * 3
+        path.write_text("".join(json.dumps({"question_id": i, "category": c, "turns": [f"p{i}"]})
+                                + "\n" for i, c in enumerate(names)))
+        old_root = prompts_module.REPO_ROOT
+        prompts_module.REPO_ROOT = Path(d)
+        try:
+            cfg = Cfg(path="q.jsonl", categories=["mt_bench", "qa"], max_prompts_per_category=2,
+                      category_groups={"mt_bench": ["writing", "math"]})
+            got = prompts_module.load_prompts(cfg, "specbench")
+        finally:
+            prompts_module.REPO_ROOT = old_root
+    assert [(p.category, p.id) for p in got] == [("qa", "8"), ("qa", "9"),
+                                                  ("mt_bench", "0"), ("mt_bench", "4")]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

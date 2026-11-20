@@ -29,6 +29,18 @@ class GenerationResult:
     overhead_time: float = 0.0           # re-tokenization, verification bookkeeping
     accepted_per_round: list[int] = field(default_factory=list)
 
+    # Round-start statistics (rounds that proposed at least one token). A round starts
+    # "mid-superword" when the draft's context at its start is not how the finished text
+    # tokenizes: the context ends inside what the full text merges into one superword.
+    # Always "clean" for a standard draft. First-token counts = rounds whose first
+    # proposed token was accepted.
+    rounds_clean: int = 0
+    rounds_mid: int = 0
+    first_accepted_clean: int = 0
+    first_accepted_mid: int = 0
+    accepted_tokens_clean: int = 0
+    accepted_tokens_mid: int = 0
+
     @property
     def bytes_per_second(self) -> float:
         return self.num_bytes / self.wall_time if self.wall_time else 0.0
@@ -48,7 +60,9 @@ class GenerationResult:
     def summary(self) -> dict:
         keys = ["num_bytes", "wall_time", "rounds", "draft_steps", "proposed_tokens",
                 "accepted_tokens", "proposed_bytes", "accepted_bytes", "draft_time",
-                "target_time", "overhead_time"]
+                "target_time", "overhead_time", "rounds_clean", "rounds_mid",
+                "first_accepted_clean", "first_accepted_mid", "accepted_tokens_clean",
+                "accepted_tokens_mid"]
         out = {k: getattr(self, k) for k in keys}
         out.update(bytes_per_second=self.bytes_per_second,
                    token_acceptance_rate=self.token_acceptance_rate,

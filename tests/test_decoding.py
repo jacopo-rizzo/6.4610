@@ -195,3 +195,18 @@ def test_cost_ratio_measurement(setup):
         assert r["c"] > 0 and r["draft_step_ms"] > 0
     # SuperBPE packs the same text into fewer draft tokens.
     assert rows[1]["context_draft_tokens"] < rows[0]["context_draft_tokens"]
+
+
+def test_round_start_statistics(setup):
+    """Every proposing round is counted once as clean or mid-superword; a standard draft
+    has no superwords, so all of its rounds are clean."""
+    *_, prompt = setup
+    sampling = SamplingConfig(temperature=0.8)
+    for name, decoder in decoders(setup, sampling).items():
+        r = decoder.generate(prompt, 40, torch.Generator().manual_seed(0))
+        assert r.rounds_clean + r.rounds_mid <= r.rounds, name
+        assert r.first_accepted_clean <= r.rounds_clean and r.first_accepted_mid <= r.rounds_mid
+        assert r.accepted_tokens_clean + r.accepted_tokens_mid == r.accepted_tokens, name
+        if name == "standard":
+            assert r.rounds_mid == 0 and r.rounds_clean > 0
+        assert "rounds_mid" in r.summary()

@@ -1,0 +1,32 @@
+# Spec-Bench settings for the paper runs: all six categories, draft lengths 8/16/32 bytes
+# (64 was the slowest setting in every run), and every draft variant. Pick drafts with
+# --drafts; each entry needs its distilled checkpoint.
+defaults: specbench.yaml
+
+drafts:
+  - name: std_50m
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_50m_${target.name}
+    tokenizer: ${target.tokenizer}
+  - name: superbpe_50m
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_50m_${target.name}_superbpe
+    tokenizer: ${target.superbpe_tokenizer}
+  # Ablation: SuperBPE draft distilled without round-start cuts (train.superword_cut_rate=0).
+  - name: superbpe_50m_nocut
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill_nocut/draft_50m_${target.name}_superbpe
+    tokenizer: ${target.superbpe_tokenizer}
+  - name: std_150m
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_150m_${target.name}
+    tokenizer: ${target.tokenizer}
+  - name: superbpe_150m
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_150m_${target.name}_superbpe
+    tokenizer: ${target.superbpe_tokenizer}
+  # Shallow drafts (configs/model/draft_50m_4l.yaml): cheaper draft step.
+  - name: std_50m_4l
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_50m_4l_${target.name}
+    tokenizer: ${target.tokenizer}
+  - name: superbpe_50m_4l
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill/draft_50m_4l_${target.name}_superbpe
+    tokenizer: ${target.superbpe_tokenizer}
+
+speculative:
+  draft_len_bytes: [8, 16, 32]

@@ -121,6 +121,7 @@ class SpeculativeDecoder:
         self.drafter.lm.reset()
         result = GenerationResult(prompt_length=len(prompt), tokens=[], num_bytes=0, wall_time=0)
         tokens = list(prompt)
+        round_starts: list[tuple[int, int]] = []   # (len(tokens) at round start, tokens proposed)
         start = self._now(force_sync=True)
 
         while len(tokens) - len(prompt) < max_new_tokens:
@@ -173,6 +174,7 @@ class SpeculativeDecoder:
             result.accepted_bytes += count_bytes(self.target_vocab,
                                                  proposal.target_tokens[:accepted], self.stop_ids)
             result.accepted_per_round.append(accepted)
+            round_starts.append((len(tokens) - len(new), k))
             result.draft_time += t2 - t1
             result.target_time += t3 - t2b
             result.overhead_time += (t1 - t0) + (t2b - t2) + (t4 - t3)
@@ -182,4 +184,20 @@ class SpeculativeDecoder:
         result.wall_time = self._now(force_sync=True) - start
         result.tokens = tokens[len(prompt):][:max_new_tokens]
         result.num_bytes = count_bytes(self.target_vocab, result.tokens, self.stop_ids)
+        self._round_start_stats(result, tokens, round_starts)    # after timing has stopped
         return result
+
+    def _round_start_stats(self, result: GenerationResult, tokens: list[int],
+                           round_starts: list[tuple[int, int]]) -> None:
+        """Split rounds by whether they started mid-superword (see GenerationResult)."""
+        full = self.draft_vocab.from_target_ids(tokens)
+        for (n, proposed), accepted in zip(round_starts, result.accepted_per_round):
+            if proposed == 0:
+                continue
+            context = self.draft_vocab.from_target_ids(tokens[:n])
+            kind = "clean" if full[: len(context)] == context else "mid"
+            setattr(result, f"rounds_{kind}", getattr(result, f"rounds_{kind}") + 1)
+            setattr(result, f"first_accepted_{kind}",
+                    getattr(result, f"first_accepted_{kind}") + (accepted >= 1))
+            setattr(result, f"accepted_tokens_{kind}",
+                    getattr(result, f"accepted_tokens_{kind}") + accepted)

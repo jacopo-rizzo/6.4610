@@ -9,6 +9,9 @@ data:
   path: data/spec_bench/question.jsonl
   prompt_field: turns        # list of turns; we use the first turn
   category_field: category
+  # MT-Bench prompts are stored under eight sub-names; they form the mt_bench category.
+  category_groups:
+    mt_bench: [writing, roleplay, reasoning, math, coding, extraction, stem, humanities]
   categories:                # results are also reported per category
     - mt_bench
     - translation

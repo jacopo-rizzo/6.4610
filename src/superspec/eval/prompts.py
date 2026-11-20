@@ -45,15 +45,28 @@ def _load_specbench(data_cfg) -> list[Prompt]:
         raise FileNotFoundError(f"{path} not found; see configs/eval/specbench.yaml for the "
                                 "download command")
     categories = set(data_cfg.get("categories") or [])
-    prompts = []
+    # Several names in the file can form one category: Spec-Bench stores its MT-Bench
+    # prompts under eight sub-names (writing, roleplay, ...).
+    group_of = {name: group for group, names in (data_cfg.get("category_groups") or {}).items()
+                for name in names}
+    per_category = data_cfg.get("max_prompts_per_category")
+    prompts, grouped = [], defaultdict(list)
     with open(path) as f:
         for line in f:
             row = json.loads(line)
             category = row[data_cfg.get("category_field", "category")]
-            if categories and category not in categories:
-                continue
             turns = row[data_cfg.get("prompt_field", "turns")]
-            prompts.append(Prompt(str(row["question_id"]), category, turns[0]))
+            if category in group_of:
+                group = group_of[category]
+                if not categories or group in categories:
+                    grouped[group].append(Prompt(str(row["question_id"]), group, turns[0]))
+            elif not categories or category in categories:
+                prompts.append(Prompt(str(row["question_id"]), category, turns[0]))
+    for group, members in grouped.items():
+        # Take evenly spaced prompts so a per-category limit covers every sub-name.
+        if per_category and len(members) > per_category:
+            members = [members[i * len(members) // per_category] for i in range(per_category)]
+        prompts.extend(members)
     return prompts
 
 
