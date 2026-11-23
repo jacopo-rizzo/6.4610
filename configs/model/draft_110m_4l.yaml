@@ -1,0 +1,18 @@
+# Shallow, wide ~110M-parameter draft: 4 layers of width 1536.
+#
+# Same depth as draft_50m_4l, so about the same step latency (depth sets the
+# latency at batch size 1), with more than twice the non-embedding capacity.
+# Meant to be trained on the larger data budget (data.train_bytes=13_200_000_000).
+# Non-embedding params ≈ 108M.
+name: draft_110m_4l
+architecture: llama
+
+hidden_size: 1536
+num_layers: 4
+num_attention_heads: 16
+num_key_value_heads: 4
+intermediate_size: 4608
+max_position_embeddings: 2048
+rope_theta: 500000.0
+rms_norm_eps: 1.0e-5
+tie_word_embeddings: true

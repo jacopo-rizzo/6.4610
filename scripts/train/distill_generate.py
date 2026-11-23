@@ -33,6 +33,38 @@ def load_prompts(prompt_cfg) -> list[str]:
     return [ds[i]["prompt"] for i in range(n)]
 
 
+def load_extra_prompts(sources) -> list[tuple[str, str]]:
+    """(source name, prompt) for each entry of generate.extra_prompts: task-like prompts
+    built from a template over the first `num_prompts` rows of a dataset's TRAIN split
+    (never the benchmark prompts). `{a.b}` in a template reads row["a"]["b"]; fields are
+    cut to `max_chars`."""
+    import re
+
+    from datasets import load_dataset
+
+    out = []
+    for src in sources or []:
+        ds = load_dataset(src.hf_name, name=src.get("subset"), split=src.split, streaming=True)
+        limit = src.get("max_chars", 4000)
+
+        def field(match, row=None):
+            value = row
+            for key in match.group(1).split("."):
+                value = value[key]
+            return str(value)[:limit]
+
+        n = 0
+        for row in ds:
+            text = re.sub(r"\{([\w.]+)\}", lambda m, row=row: field(m, row), src.template).strip()
+            if text:
+                out.append((src.name, text))
+                n += 1
+            if n >= src.num_prompts:
+                break
+        logger.info("%s: %d prompts from %s", src.name, n, src.hf_name)
+    return out
+
+
 def clean_response(token_ids, finished: bool, stop_ids: set[int], eot_id: int) -> list[int]:
     """Drop any stop tokens the backend left at the end, then mark a finished answer
     with the end-of-turn token so the drafts learn where the target stops."""
@@ -100,7 +132,12 @@ def main():
     out_path.parent.mkdir(parents=True, exist_ok=True)
     done = sum(1 for _ in open(out_path)) if out_path.exists() else 0
 
-    prompts = load_prompts(cfg.prompts)[done:]
+    # Extra (task-like) prompts follow the main ones, so adding them to a finished file
+    # only generates the new rows.
+    tagged = [("main", p) for p in load_prompts(cfg.prompts)] + load_extra_prompts(
+        cfg.get("extra_prompts"))
+    sources = [s for s, _ in tagged][done:]
+    prompts = [p for _, p in tagged][done:]
     logger.info("%d prompts to generate (%d already done)", len(prompts), done)
     if not prompts:
         return
@@ -118,7 +155,8 @@ def main():
 
     with open(out_path, "a") as f:
         for k, (token_ids, finished) in enumerate(responses):
-            row = {"index": done + k, "prompt": prompts[k], "prompt_ids": prompt_ids[k],
+            row = {"index": done + k, "source": sources[k], "prompt": prompts[k],
+                   "prompt_ids": prompt_ids[k],
                    "response_ids": clean_response(token_ids, finished, stop_ids, eot_id),
                    "finished": finished}
             f.write(json.dumps(row) + "\n")

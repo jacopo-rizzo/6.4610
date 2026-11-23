@@ -24,7 +24,9 @@ from superspec.tokenization import load_vocab
 from superspec.tokenization.vocab import vocab_kind
 from superspec.training.distill import (
     DistillBatches,
+    TeacherStore,
     build_examples,
+    distill_loss,
     read_generations,
     response_bits_per_byte,
     split_train_val,
@@ -87,8 +89,18 @@ def main():
     # Round-start cuts only change SuperBPE tokenization (see training/distill.py).
     cut_rate = cfg.get("superword_cut_rate", 0.0) if vocab_kind(vocab) == "superbpe" else 0.0
     logger.info("superword cut rate: %g", cut_rate)
+    # Train on the target's own next-token distribution as well (see training/distill.py).
+    kl_weight = float(cfg.get("kl_weight", 0.0))
+    teacher = TeacherStore(cfg.teacher_dir) if kl_weight > 0 else None
+    logger.info("kl weight: %g%s", kl_weight, f" (teacher top-{teacher.k})" if teacher else "")
     batches = DistillBatches(train_examples, pad_id=vocab.eos_id, seed=cfg.seed, vocab=vocab,
-                             cut_rate=cut_rate, max_len=max_len)
+                             cut_rate=cut_rate, max_len=max_len, teacher=teacher)
+    first_target = None
+    if teacher is not None and vocab_kind(vocab) == "superbpe":
+        first_target = torch.tensor(vocab.first_target_token, device=accelerator.device)
+
+    def loss_fn(m, batch):
+        return distill_loss(m, batch, vocab.vocab_size, first_target, kl_weight)[0]
 
     def get_micro_batch(i):
         return batches.batch(micro_batch_indices(i, accelerator.process_index,
@@ -103,12 +115,13 @@ def main():
                          log.wandb, enabled=accelerator.is_main_process)
     train(model, accelerator, optimizer, get_micro_batch, total_steps, accum, cfg.optim, run_dir,
           metrics, evaluate=evaluate, log_every=log.every_steps,
-          eval_every=log.eval_every_steps, save_every=cfg.save_every_steps)
+          eval_every=log.eval_every_steps, save_every=cfg.save_every_steps,
+          loss_fn=loss_fn if teacher is not None else None)
 
     if accelerator.is_main_process:
         save_draft(accelerator.unwrap_model(model), run_dir, vocab,
                    extra={"stage": "distill", "init_from": str(init_dir), "steps": total_steps,
-                          "superword_cut_rate": cut_rate})
+                          "superword_cut_rate": cut_rate, "kl_weight": kl_weight})
         logger.info("Saved %s", run_dir)
 
 

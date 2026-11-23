@@ -36,6 +36,13 @@ train:
   # about one speculative round). Teaches the draft the contexts that rounds start from,
   # which fully merged text never shows (see superspec/training/distill.py). 0 = off.
   superword_cut_rate: 0.1
+  # > 0: also train on the target's own next-token distribution, KL(p || q) over the
+  # top-k probabilities stored by scripts/train/distill_teacher.py in teacher_dir
+  # (see superspec/training/distill.py). 0 = sampled responses only.
+  kl_weight: 0.0
+  teacher_dir: ${oc.env:CKPT_DIR}/distill_data/teacher_${target.name}
+  teacher_top_k: 32
+  teacher_max_tokens: 2560   # prompt + response target tokens per row when the teacher runs
   optim:
     name: adamw
     lr: 1.0e-4

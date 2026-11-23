@@ -210,3 +210,35 @@ def test_round_start_statistics(setup):
         if name == "standard":
             assert r.rounds_mid == 0 and r.rounds_clean > 0
         assert "rounds_mid" in r.summary()
+
+
+@pytest.mark.parametrize("method", ["standard", "superword", "superword_pointmass"])
+def test_stop_below_and_draft_temperature_are_lossless(setup, method):
+    """Ending proposals at unsure tokens and sampling the draft at its own temperature
+    must not change the output distribution."""
+    _, _, target, *_, prompt = setup
+    sampling = SamplingConfig(temperature=0.8, top_p=0.95)
+    joint = exact_target_joint(target, prompt, sampling)
+    decoder = decoders(setup, sampling, draft_stop_below=0.3, draft_temperature_scale=0.7)[method]
+
+    n = 3000
+    gen = torch.Generator().manual_seed(321)
+    counts = Counter(tuple(decoder.generate(prompt, 6, gen).tokens[:2]) for _ in range(n))
+    tv = total_variation(counts, joint, n)
+    rng = np.random.default_rng(1)
+    keys, probs = list(joint), np.array(list(joint.values()))
+    noise = [total_variation(dict(zip(keys, rng.multinomial(n, probs / probs.sum()))), joint, n)
+             for _ in range(200)]
+    assert tv < 1.3 * np.quantile(noise, 0.995), f"{method}: TV {tv:.4f}"
+
+
+def test_stop_below_shortens_proposals_and_keeps_greedy_output(setup):
+    base, _, target, *_, prompt = setup
+    sampling = SamplingConfig(temperature=0.0)
+    expected = autoregressive_generate(CachedLM(target), base, prompt, 30, sampling, set()).tokens
+    plain = decoders(setup, sampling)
+    stopping = decoders(setup, sampling, draft_stop_below=0.9)
+    for name in ("standard", "superword"):
+        a, b = plain[name].generate(prompt, 30), stopping[name].generate(prompt, 30)
+        assert b.tokens == expected, name
+        assert b.draft_steps / b.rounds < a.draft_steps / a.rounds, name    # shorter proposals

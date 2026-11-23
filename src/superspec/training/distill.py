@@ -19,6 +19,16 @@ training responses are therefore tokenized in randomly cut segments, each
 merged on its own, which is exactly what the draft sees and must produce at a
 round start: merged(text before the cut) followed by merged(text after it).
 Cuts are re-drawn every epoch. Validation examples stay fully merged.
+
+Matching the target's distribution (`kl_weight` > 0). Training on sampled responses
+only shows the draft one token per position. The acceptance rate of speculative
+decoding is the overlap between the target's distribution p and the draft's q, so we
+also train on p itself: scripts/train/distill_teacher.py stores the target's top-k
+next-token probabilities at every response position (`TeacherStore`), and the loss
+adds KL(p || q) over those k tokens plus one bucket for all the rest. For a SuperBPE
+draft, q is the first-token marginal (the draft's probability that its next draft
+token starts with target token t), which is exactly the distribution the verifier
+checks the first token of every draft token against.
 """
 
 from __future__ import annotations
@@ -38,6 +48,47 @@ class Example:
     prompt: list[int]       # draft token ids
     response: list[int]     # draft token ids (fully merged), cut to fit max_len
     response_target: list[int] | None = None   # the whole response in target token ids
+    row: int = -1           # line number in the generations file (key into TeacherStore)
+
+
+class TeacherStore:
+    """The target's top-k next-token log-probabilities at every response position,
+    written by scripts/train/distill_teacher.py.
+
+        <dir>/meta.json     k, number of rows and positions
+        <dir>/offsets.npy   int64 [rows + 1]: row r owns positions offsets[r] .. offsets[r + 1]
+        <dir>/idx.bin       uint32 [positions, k]   target token ids
+        <dir>/logp.bin      float16 [positions, k]  their log-probabilities (temperature 1)
+
+    Position j of row r is the target's distribution for response token j given the
+    prompt and response tokens 0 .. j - 1. Rows can be shorter than the response (long
+    responses are cut when the teacher runs).
+    """
+
+    def __init__(self, directory: str | Path):
+        directory = Path(directory)
+        self.meta = json.loads((directory / "meta.json").read_text())
+        self.k = self.meta["k"]
+        self.offsets = np.load(directory / "offsets.npy")
+        n = int(self.offsets[-1])
+        self.idx = np.memmap(directory / "idx.bin", dtype=np.uint32, mode="r", shape=(n, self.k))
+        self.logp = np.memmap(directory / "logp.bin", dtype=np.float16, mode="r", shape=(n, self.k))
+
+    def length(self, row: int) -> int:
+        return int(self.offsets[row + 1] - self.offsets[row])
+
+    def get(self, row: int, positions: list[int]) -> tuple[np.ndarray, np.ndarray]:
+        at = self.offsets[row] + np.asarray(positions, dtype=np.int64)
+        return self.idx[at].astype(np.int64), self.logp[at].astype(np.float32)
+
+
+def target_positions(vocab, response: list[int]) -> list[int]:
+    """For each draft token of a response, the index of its first target token."""
+    out, pos = [], 0
+    for token in response:
+        out.append(pos)
+        pos += len(vocab.expand(token))
+    return out
 
 
 def segmented_ids(vocab, target_ids: list[int], cut_rate: float, rng: random.Random) -> list[int]:
@@ -57,8 +108,9 @@ def segmented_ids(vocab, target_ids: list[int], cut_rate: float, rng: random.Ran
 
 
 def read_generations(path: str | Path) -> list[dict]:
+    """Rows of the generations file; "row" is the line number (key into TeacherStore)."""
     with open(path) as f:
-        return [json.loads(line) for line in f]
+        return [{**json.loads(line), "row": n} for n, line in enumerate(f)]
 
 
 def split_train_val(rows: list[dict], val_every: int = 100) -> tuple[list[dict], list[dict]]:
@@ -77,12 +129,18 @@ def build_examples(rows: list[dict], vocab, max_len: int, min_response: int = 8)
         response = vocab.from_target_ids(row["response_ids"])
         if len(prompt) + min_response > max_len:
             continue
-        examples.append(Example(prompt, response[: max_len - len(prompt)], row["response_ids"]))
+        examples.append(Example(prompt, response[: max_len - len(prompt)], row["response_ids"],
+                                row.get("row", -1)))
     return examples
 
 
-def collate(examples: list[Example], pad_id: int):
-    """Right-padded input_ids / attention_mask / labels (prompt and padding ignored)."""
+def collate(examples: list[Example], pad_id: int, teacher: TeacherStore | None = None, vocab=None):
+    """Right-padded input_ids / attention_mask / labels (prompt and padding ignored).
+
+    With `teacher` (and `vocab`), also teacher_idx / teacher_logp [batch, length, k] and
+    teacher_mask [batch, length]: the target's top-k distribution for the label at each
+    response position, where the teacher has one.
+    """
     import torch
 
     length = max(len(e.prompt) + len(e.response) for e in examples)
@@ -94,8 +152,61 @@ def collate(examples: list[Example], pad_id: int):
         input_ids[row, : len(ids)] = ids
         labels[row, len(e.prompt): len(ids)] = e.response
         mask[row, : len(ids)] = 1
-    return {"input_ids": torch.from_numpy(input_ids), "attention_mask": torch.from_numpy(mask),
-            "labels": torch.from_numpy(labels)}
+    batch = {"input_ids": torch.from_numpy(input_ids), "attention_mask": torch.from_numpy(mask),
+             "labels": torch.from_numpy(labels)}
+    if teacher is not None:
+        t_idx = np.zeros((len(examples), length, teacher.k), dtype=np.int64)
+        t_logp = np.zeros((len(examples), length, teacher.k), dtype=np.float32)
+        t_mask = np.zeros((len(examples), length), dtype=bool)
+        for row, e in enumerate(examples):
+            if e.row < 0:
+                continue
+            positions = target_positions(vocab, e.response)
+            have = [i for i, p in enumerate(positions) if p < teacher.length(e.row)]
+            if not have:
+                continue
+            idx, logp = teacher.get(e.row, [positions[i] for i in have])
+            at = len(e.prompt) + np.asarray(have)
+            t_idx[row, at], t_logp[row, at], t_mask[row, at] = idx, logp, True
+        batch.update(teacher_idx=torch.from_numpy(t_idx), teacher_logp=torch.from_numpy(t_logp),
+                     teacher_mask=torch.from_numpy(t_mask))
+    return batch
+
+
+def distill_loss(model, batch: dict, vocab_size: int, first_target=None, kl_weight: float = 1.0):
+    """Cross-entropy on the sampled response tokens plus, where the batch carries the
+    teacher's top-k distribution, kl_weight * KL(p || q) (see the module docstring).
+
+    `first_target` [draft vocab] maps each draft token to its first target token (SuperBPE
+    drafts); None for a standard draft, whose q is already over target tokens.
+    Returns (loss, cross-entropy, KL) as scalars.
+    """
+    import torch
+    import torch.nn.functional as F
+
+    logits = model(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]).logits
+    logits = logits[:, :-1, :vocab_size].float()            # position t predicts label t + 1
+    labels = batch["labels"][:, 1:]
+    keep = labels != IGNORE
+    ce = F.cross_entropy(logits[keep], labels[keep])
+    if kl_weight <= 0 or "teacher_mask" not in batch or not batch["teacher_mask"][:, 1:].any():
+        return ce, ce.detach(), torch.zeros((), device=ce.device)
+
+    mask = batch["teacher_mask"][:, 1:]
+    idx, logp = batch["teacher_idx"][:, 1:][mask], batch["teacher_logp"][:, 1:][mask]
+    log_q = F.log_softmax(logits[mask], dim=-1)             # [positions, draft vocab]
+    if first_target is None:
+        q_k = log_q.gather(1, idx).exp()
+    else:                                       # first-token marginal over target tokens
+        marginal = torch.zeros(log_q.size(0), int(first_target.max()) + 1, device=log_q.device)
+        marginal.index_add_(1, first_target, log_q.exp())
+        q_k = marginal.gather(1, idx)
+    p_k = logp.exp()
+    p_rest = (1 - p_k.sum(1)).clamp(min=1e-6)   # everything outside the top k: one bucket
+    q_rest = (1 - q_k.sum(1)).clamp(min=1e-6)
+    kl = (p_k * (logp - q_k.clamp(min=1e-9).log())).sum(1) + p_rest * (p_rest.log() - q_rest.log())
+    kl = kl.mean()
+    return ce + kl_weight * kl, ce.detach(), kl.detach()
 
 
 class DistillBatches:
@@ -107,9 +218,13 @@ class DistillBatches:
     """
 
     def __init__(self, examples: list[Example], pad_id: int, seed: int = 0, vocab=None,
-                 cut_rate: float = 0.0, max_len: int | None = None):
+                 cut_rate: float = 0.0, max_len: int | None = None,
+                 teacher: TeacherStore | None = None):
         if cut_rate > 0 and (vocab is None or max_len is None):
             raise ValueError("cut_rate > 0 needs vocab and max_len")
+        if teacher is not None and vocab is None:
+            raise ValueError("teacher needs vocab")
+        self.teacher = teacher
         self.examples = examples
         self.pad_id = pad_id
         self.seed = seed
@@ -133,10 +248,10 @@ class DistillBatches:
             return e
         rng = random.Random((self.seed * 1_000_003 + epoch) * 1_000_003 + k)
         response = segmented_ids(self.vocab, e.response_target, self.cut_rate, rng)
-        return Example(e.prompt, response[: self.max_len - len(e.prompt)], e.response_target)
+        return Example(e.prompt, response[: self.max_len - len(e.prompt)], e.response_target, e.row)
 
     def batch(self, indices) -> dict:
-        return collate([self.example(i) for i in indices], self.pad_id)
+        return collate([self.example(i) for i in indices], self.pad_id, self.teacher, self.vocab)
 
 
 def response_bits_per_byte(model, examples: list[Example], vocab, batch_size: int = 8,

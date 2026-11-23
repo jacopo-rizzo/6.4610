@@ -29,6 +29,11 @@ speculative:
   # The draft stops after the token that reaches the limit.
   draft_len_bytes: [16, 32, 64]
   max_draft_steps: 16          # safety cap on draft forward passes per round
+  # End a proposal after the first draft token whose own probability is below this
+  # (0 = off). Lossless; trades proposal length for fewer wasted draft passes.
+  draft_stop_below: 0.0
+  # Draft sampling temperature = target temperature x this factor (lossless for any value).
+  draft_temperature_scale: 1.0
   max_target_tokens_per_round: 64
   temperatures: [0.0, 0.7, 1.0]
   top_p: 1.0

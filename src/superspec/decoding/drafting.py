@@ -128,11 +128,17 @@ class Drafter:
 
     def propose(self, context: list[int], sampling: SamplingConfig, generator,
                 max_bytes: int, max_steps: int, max_target_tokens: int,
-                stop_ids: set[int]) -> Proposal:
+                stop_ids: set[int], stop_below: float = 0.0) -> Proposal:
         """Draft until `max_bytes` bytes are proposed (the draft length is fixed in
         bytes so both tokenizers are compared fairly), or another limit is hit.
 
         `context` is the current text in draft token ids.
+
+        `stop_below` > 0 ends the proposal after the first draft token that the draft
+        itself gave a probability below that value: an unsure token is likely to be
+        rejected, and everything drafted after a rejection is wasted. The token is still
+        proposed, and the decision uses only the draft's own probabilities, so the
+        verification rules stay exact.
         """
         proposal = Proposal()
         if max_target_tokens <= 0:
@@ -143,9 +149,11 @@ class Drafter:
             proposal.num_steps += 1
             if sampling.greedy:
                 w, q = int(logits.argmax()), None
+                confidence = float(logits.float().softmax(-1)[w]) if stop_below > 0 else 1.0
             else:
                 q = to_probs(logits, sampling)
                 w = sample(q, generator)
+                confidence = float(q[w]) if stop_below > 0 else 1.0
 
             expansion = self.vocab.expand(w)
             if len(proposal) + len(expansion) > max_target_tokens:
@@ -159,6 +167,6 @@ class Drafter:
             proposal.num_bytes += len(self.vocab.token_bytes(w))
             tokens.append(w)
 
-            if w in stop_ids or proposal.num_bytes >= max_bytes:
+            if w in stop_ids or proposal.num_bytes >= max_bytes or confidence < stop_below:
                 break
         return proposal

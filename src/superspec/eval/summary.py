@@ -49,6 +49,8 @@ def aggregate(rows: list[dict]) -> list[dict]:
             if key not in totals:
                 totals[key] = {k: row[k] for k in ("temperature", "method", "draft",
                                                    "draft_len_bytes")}
+                totals[key].update(stop_below=row.get("stop_below", 0.0),
+                                   temp_scale=row.get("temp_scale", 1.0))
                 totals[key].update({f: 0.0 for f in SUM_FIELDS + ROUND_START_FIELDS},
                                    category=category, prompts=0)
             t = totals[key]
@@ -71,7 +73,8 @@ def aggregate(rows: list[dict]) -> list[dict]:
         synced = t["phases_synced"] and t["method"] != "autoregressive"
         summary.append({
             "temperature": t["temperature"], "category": t["category"], "method": t["method"],
-            "draft": t["draft"], "draft_len_bytes": t["draft_len_bytes"], "prompts": t["prompts"],
+            "draft": t["draft"], "draft_len_bytes": t["draft_len_bytes"],
+            "stop_below": t["stop_below"], "temp_scale": t["temp_scale"], "prompts": t["prompts"],
             "bytes_per_second": round(bps, 2),
             "speedup": round(bps / base, 3) if base else None,
             "token_acceptance": _ratio(t["accepted_tokens"], t["proposed_tokens"]),
@@ -99,7 +102,8 @@ def aggregate(rows: list[dict]) -> list[dict]:
         })
     summary.sort(key=lambda s: (s["category"] != "all", s["category"], s["temperature"],
                                 s["method"] != "autoregressive", str(s["draft"]),
-                                s["method"], s["draft_len_bytes"] or 0))
+                                s["method"], s["draft_len_bytes"] or 0, s["stop_below"],
+                                s["temp_scale"]))
     return summary
 
 

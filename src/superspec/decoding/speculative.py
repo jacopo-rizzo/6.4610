@@ -73,6 +73,8 @@ class SpeculativeDecoder:
         max_target_tokens_per_round: int = 64,
         retokenize: bool = True,
         time_phases: bool = False,
+        draft_stop_below: float = 0.0,
+        draft_temperature_scale: float = 1.0,
     ):
         if method not in METHODS + CONTROL_METHODS:
             raise ValueError(f"method must be one of {METHODS}, got {method!r}")
@@ -94,6 +96,14 @@ class SpeculativeDecoder:
         self.max_draft_steps = max_draft_steps
         self.max_target_tokens_per_round = max_target_tokens_per_round
         self.retokenize = retokenize
+        # End a proposal after the first token the draft was unsure about (see Drafter.propose).
+        self.draft_stop_below = draft_stop_below
+        # The draft may sample at its own temperature (target temperature x this factor). The
+        # verifier is given the distribution the draft really sampled from, so any value is
+        # lossless; values other than 1 can match the target better if the draft is miscalibrated.
+        self.draft_sampling = sampling if sampling.greedy or draft_temperature_scale == 1.0 else \
+            SamplingConfig(temperature=sampling.temperature * draft_temperature_scale,
+                           top_p=sampling.top_p)
         # Sync the GPU between phases to time each one. This adds latency that the
         # autoregressive baseline does not pay, so leave it off for speed numbers.
         self.time_phases = time_phases
@@ -133,9 +143,9 @@ class SpeculativeDecoder:
             draft_context = self.draft_vocab.from_target_ids(tokens)
             t1 = self._now()
             proposal = self.drafter.propose(
-                draft_context, self.sampling, generator, max_bytes=self.max_draft_bytes,
+                draft_context, self.draft_sampling, generator, max_bytes=self.max_draft_bytes,
                 max_steps=self.max_draft_steps, max_target_tokens=max_tokens,
-                stop_ids=self.stop_ids)
+                stop_ids=self.stop_ids, stop_below=self.draft_stop_below)
             t2 = self._now()
             if self.method == "exact_match" and self.retokenize:
                 proposal = self._to_target_strings(proposal, max_tokens)

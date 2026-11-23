@@ -84,6 +84,7 @@ def train(
     eval_every: int = 1000,
     save_every: int = 2000,
     keep_checkpoints: int = 2,
+    loss_fn: Callable | None = None,
 ) -> None:
     """Run (or resume) training up to `total_steps` optimizer steps."""
     start_step = 0
@@ -108,7 +109,8 @@ def train(
             last = micro == accum_steps - 1
             # Only all-reduce gradients on the last micro-batch of the step.
             with nullcontext() if last else accelerator.no_sync(model):
-                loss = model(**batch).loss
+                # loss_fn(model, batch) -> loss replaces the model's own loss if given.
+                loss = loss_fn(model, batch) if loss_fn else model(**batch).loss
                 accelerator.backward(loss / accum_steps)
             step_loss += loss.item() / accum_steps
 

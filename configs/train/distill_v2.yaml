@@ -1,0 +1,52 @@
+# Distillation, second version: task-like prompts in addition to UltraChat, and training
+# on the target's own next-token distribution.
+#
+#   python scripts/train/distill_generate.py --config train/distill_v2.yaml   # adds the new rows
+#   python scripts/train/distill_teacher.py  --config train/distill_v2.yaml   # target's top-k probabilities
+#   python scripts/train/distill_train.py    --config train/distill_v2.yaml --model ... --tokenizer ...
+defaults: distill.yaml
+
+generate:
+  # Prompts from the TRAIN splits of the task families that Spec-Bench and the code
+  # benchmarks draw on. They never include a benchmark prompt.
+  extra_prompts:
+    - name: translation
+      hf_name: wmt/wmt14
+      subset: de-en
+      split: train
+      num_prompts: 6000
+      template: "Translate German to English: {translation.de}"
+    - name: summarization
+      hf_name: abisee/cnn_dailymail
+      subset: 3.0.0
+      split: train
+      num_prompts: 4000
+      max_chars: 4000
+      template: "Summarize: {article}"
+    - name: qa
+      hf_name: google-research-datasets/nq_open
+      subset: nq_open
+      split: train
+      num_prompts: 5000
+      template: "{question}"
+    - name: math
+      hf_name: openai/gsm8k
+      subset: main
+      split: train
+      num_prompts: 5000
+      template: "{question}"
+    - name: rag
+      hf_name: rajpurkar/squad
+      subset: plain_text
+      split: train
+      num_prompts: 5000
+      max_chars: 3000
+      template: "Answer the question using the context.\n\nContext: {context}\n\nQuestion: {question}"
+    - name: code
+      hf_name: sahil2801/CodeAlpaca-20k
+      split: train
+      num_prompts: 5000
+      template: "{instruction}\n{input}"
+
+train:
+  kl_weight: 1.0

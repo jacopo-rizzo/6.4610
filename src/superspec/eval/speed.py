@@ -32,10 +32,18 @@ class RunSpec:
     method: str                      # autoregressive | a METHODS entry | exact_match_noretok
     draft: str | None = None
     draft_len_bytes: int | None = None
+    stop_below: float = 0.0          # speculative.draft_stop_below
+    temp_scale: float = 1.0          # speculative.draft_temperature_scale
 
     @property
     def key(self) -> str:
-        return f"T={self.temperature}|{self.method}|{self.draft}|{self.draft_len_bytes}"
+        key = f"T={self.temperature}|{self.method}|{self.draft}|{self.draft_len_bytes}"
+        # Appended only when set, so keys of earlier results stay valid.
+        if self.stop_below:
+            key += f"|stop={self.stop_below}"
+        if self.temp_scale != 1.0:
+            key += f"|tscale={self.temp_scale}"
+        return key
 
 
 def build_run_specs(cfg, drafts: dict[str, Draft]) -> list[RunSpec]:
@@ -49,9 +57,12 @@ def build_run_specs(cfg, drafts: dict[str, Draft]) -> list[RunSpec]:
             if spec_cfg.get("also_run_exact_match", False):
                 methods.append("exact_match" if spec_cfg.get("exact_match_retokenize", True)
                                else "exact_match_noretok")
+            stop = float(spec_cfg.get("draft_stop_below", 0.0))
+            scale = float(spec_cfg.get("draft_temperature_scale", 1.0))
             for method in methods:
                 for n_bytes in spec_cfg.draft_len_bytes:
-                    specs.append(RunSpec(float(temperature), method, name, int(n_bytes)))
+                    specs.append(RunSpec(float(temperature), method, name, int(n_bytes), stop,
+                                         scale))
     return specs
 
 
@@ -73,6 +84,8 @@ def make_generate_fn(spec: RunSpec, cfg, target: Target, drafts: dict[str, Draft
         max_target_tokens_per_round=cfg.speculative.get("max_target_tokens_per_round", 64),
         retokenize=spec.method != "exact_match_noretok",
         time_phases=cfg.timing.get("phase_breakdown", False),
+        draft_stop_below=spec.stop_below,
+        draft_temperature_scale=spec.temp_scale,
     )
     return lambda prompt, gen: decoder.generate(prompt, max_new, gen)
 
