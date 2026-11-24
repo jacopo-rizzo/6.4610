@@ -1,0 +1,20 @@
+# Spec-Bench for the improved drafts (4 layers x 1536, pretrained on the 13.2 GB set,
+# distilled with task prompts and the target's distribution; configs/train/distill_v2.yaml).
+# Compares plain decoding, a standard draft, and a SuperBPE draft under both rules for
+# later superword tokens. No string-level exact match.
+defaults: specbench_paper.yaml
+
+drafts:
+  - name: std_110m_4l
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill_v2/draft_110m_4l_${target.name}
+    tokenizer: ${target.tokenizer}
+  - name: superbpe_110m_4l
+    checkpoint: ${oc.env:CKPT_DIR}/drafts/distill_v2/draft_110m_4l_${target.name}_superbpe
+    tokenizer: ${target.superbpe_tokenizer}
+
+speculative:
+  methods:
+    standard: [standard]
+    superbpe: [superword, superword_pointmass]
+  also_run_exact_match: false
+  draft_len_bytes: [8, 16, 32]

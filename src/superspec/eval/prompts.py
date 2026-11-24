@@ -28,11 +28,17 @@ def load_prompts(data_cfg, benchmark: str) -> list[Prompt]:
 
     per_category = data_cfg.get("max_prompts_per_category")
     if per_category:
+        # prompt_offset skips that many prompts of each category first, which gives a
+        # second, disjoint prompt set (for tuning decoder settings away from the test set).
+        # (Grouped categories are already cut to size, and shifted, in _load_specbench.)
+        offset = data_cfg.get("prompt_offset", 0)
+        grouped = set(data_cfg.get("category_groups") or {})
         kept, seen = [], defaultdict(int)
         for p in prompts:
-            if seen[p.category] < per_category:
+            seen[p.category] += 1
+            skip = 0 if p.category in grouped else offset
+            if skip < seen[p.category] <= skip + per_category:
                 kept.append(p)
-                seen[p.category] += 1
         prompts = kept
     if data_cfg.get("max_prompts"):
         prompts = prompts[: data_cfg.max_prompts]
@@ -65,7 +71,9 @@ def _load_specbench(data_cfg) -> list[Prompt]:
     for group, members in grouped.items():
         # Take evenly spaced prompts so a per-category limit covers every sub-name.
         if per_category and len(members) > per_category:
-            members = [members[i * len(members) // per_category] for i in range(per_category)]
+            stride = len(members) // per_category
+            shift = stride // 2 if data_cfg.get("prompt_offset", 0) else 0   # the disjoint set
+            members = [members[i * stride + shift] for i in range(per_category)]
         prompts.extend(members)
     return prompts
 

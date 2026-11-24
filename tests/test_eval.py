@@ -142,10 +142,14 @@ def test_specbench_category_groups():
             cfg = Cfg(path="q.jsonl", categories=["mt_bench", "qa"], max_prompts_per_category=2,
                       category_groups={"mt_bench": ["writing", "math"]})
             got = prompts_module.load_prompts(cfg, "specbench")
+            other = prompts_module.load_prompts(Cfg(cfg, prompt_offset=2), "specbench")
         finally:
             prompts_module.REPO_ROOT = old_root
     assert [(p.category, p.id) for p in got] == [("qa", "8"), ("qa", "9"),
                                                   ("mt_bench", "0"), ("mt_bench", "4")]
+    # The disjoint tuning set: later prompts of plain categories, shifted picks of groups.
+    assert [(p.category, p.id) for p in other] == [("qa", "10"), ("mt_bench", "2"),
+                                                    ("mt_bench", "6")]
 
 
 if __name__ == "__main__":
