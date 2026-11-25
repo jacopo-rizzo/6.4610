@@ -41,6 +41,13 @@ class GenerationResult:
     accepted_tokens_clean: int = 0
     accepted_tokens_mid: int = 0
 
+    # Re-draw after a rejection (SpeculativeDecoder(redraw=True)): rounds whose proposal
+    # started with tokens obtained without a draft pass, those tokens, and how many of
+    # them were accepted.
+    redraw_rounds: int = 0
+    redraw_tokens: int = 0
+    redraw_accepted: int = 0
+
     @property
     def bytes_per_second(self) -> float:
         return self.num_bytes / self.wall_time if self.wall_time else 0.0
@@ -62,7 +69,7 @@ class GenerationResult:
                 "accepted_tokens", "proposed_bytes", "accepted_bytes", "draft_time",
                 "target_time", "overhead_time", "rounds_clean", "rounds_mid",
                 "first_accepted_clean", "first_accepted_mid", "accepted_tokens_clean",
-                "accepted_tokens_mid"]
+                "accepted_tokens_mid", "redraw_rounds", "redraw_tokens", "redraw_accepted"]
         out = {k: getattr(self, k) for k in keys}
         out.update(bytes_per_second=self.bytes_per_second,
                    token_acceptance_rate=self.token_acceptance_rate,

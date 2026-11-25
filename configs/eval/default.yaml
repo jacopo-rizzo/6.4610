@@ -34,6 +34,13 @@ speculative:
   draft_stop_below: 0.0
   # Draft sampling temperature = target temperature x this factor (lossless for any value).
   draft_temperature_scale: 1.0
+  # SuperBPE drafts only (both lossless). superword_logit_bonus: added to the logits of
+  # superword tokens before the draft samples, so it emits more text per pass.
+  # redraw_after_rejection: after a rejection, re-draw the rejected draft token given the
+  # target's own token and open the next round with the rest of that superword (no extra
+  # draft pass); targets rounds that would otherwise start in the middle of a superword.
+  superword_logit_bonus: 0.0
+  redraw_after_rejection: false
   max_target_tokens_per_round: 64
   temperatures: [0.0, 0.7, 1.0]
   top_p: 1.0

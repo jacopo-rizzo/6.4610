@@ -55,6 +55,10 @@ class Proposal:
     source: list[int] = field(default_factory=list)
     num_bytes: int = 0
     num_steps: int = 0          # draft forward passes used (can exceed len(draft_tokens) by 1)
+    # Per draft token: what it was chosen from (probabilities over the draft vocab when
+    # sampling, logits when greedy), kept for Drafter.redraw. None for a token that did
+    # not come from a forward pass of this round.
+    step_scores: list[torch.Tensor | None] = field(default_factory=list)
 
     def __len__(self) -> int:
         return len(self.target_tokens)
@@ -70,14 +74,19 @@ class Drafter:
     """Wraps a draft model and its vocab (standard or SuperBPE)."""
 
     def __init__(self, draft: CachedLM, vocab, target_vocab_size: int,
-                 rows: str = "length_aware"):
+                 rows: str = "length_aware", superword_bonus: float = 0.0):
         if rows not in ROW_RULES:
             raise ValueError(f"rows must be one of {ROW_RULES}, got {rows!r}")
         self.lm = draft
         self.vocab = vocab
         self.target_vocab_size = target_vocab_size
         self.rows = rows
+        # Added to the logits of superword tokens before the draft samples, so it emits
+        # more text per forward pass. The verifier gets the distribution the draft really
+        # sampled from, so any value keeps the output exact.
+        self.superword_bonus = superword_bonus if vocab.vocab_size > target_vocab_size else 0.0
         expansions = [vocab.expand(w) for w in range(vocab.vocab_size)]
+        self._exact = {e: w for w, e in enumerate(expansions)}     # expansion -> draft token
         # first_target[w] = first target token of draft token w, for the marginal above.
         self.first_target = torch.tensor([e[0] for e in expansions], device=draft.device)
         self._build_continuations(expansions, draft.device)
@@ -126,6 +135,46 @@ class Drafter:
                  for j in range(1, len(expansion))]
         return [first] + later
 
+    def redraw(self, scores: torch.Tensor, greedy: bool, prefix: tuple[int, ...], generator):
+        """After a rejection: which draft token would the draft have used, given the target
+        tokens `prefix` (the accepted part of the rejected draft token plus the target's
+        own token)?
+
+        `scores` is what the rejected draft token was chosen from, so this costs no forward
+        pass. We draw again from it, restricted to draft tokens that are `prefix` exactly or
+        start with it. If the draw is longer than `prefix`, its remaining target tokens are
+        a proposal for the next round: returns (draft token, remaining target tokens, their
+        q rows). Returns None if there is nothing to propose.
+
+        Exact for the same reason as the rules in verification.py: the draw is fresh, its
+        distribution is known, and the rows are that distribution given that the draw was
+        longer than `prefix` (length-aware) or given the drawn token itself (point mass).
+        """
+        span = self._span.get(prefix)
+        if span is None or self.rows not in ("length_aware", "point_mass"):
+            return None
+        candidates = self._cont_ids[span[0]: span[1]]
+        exact = self._exact.get(prefix)
+        if exact is not None:
+            candidates = torch.cat([candidates, torch.tensor([exact], device=candidates.device)])
+        weights = scores[candidates]
+        if greedy:
+            pick = int(weights.argmax())
+        else:
+            if float(weights.sum()) <= 0:
+                return None
+            pick = sample(weights / weights.sum(), generator)
+        w = int(candidates[pick])
+        if w == exact:
+            return None
+        expansion = self.vocab.expand(w)
+        later = range(len(prefix), len(expansion))
+        if greedy or self.rows == "point_mass":
+            rows = [None] * len(later)
+        else:
+            rows = [self.later_token_row(scores, expansion, j) for j in later]
+        return w, expansion[len(prefix):], rows
+
     def propose(self, context: list[int], sampling: SamplingConfig, generator,
                 max_bytes: int, max_steps: int, max_target_tokens: int,
                 stop_ids: set[int], stop_below: float = 0.0) -> Proposal:
@@ -147,6 +196,9 @@ class Drafter:
         for _ in range(max_steps):
             logits = self.lm.logits(tokens, 1)[0, : self.vocab.vocab_size]
             proposal.num_steps += 1
+            if self.superword_bonus:
+                logits = logits.clone()
+                logits[self.target_vocab_size:] += self.superword_bonus
             if sampling.greedy:
                 w, q = int(logits.argmax()), None
                 confidence = float(logits.float().softmax(-1)[w]) if stop_below > 0 else 1.0
@@ -160,6 +212,7 @@ class Drafter:
                 break
             index = len(proposal.draft_tokens)
             proposal.draft_tokens.append(w)
+            proposal.step_scores.append(logits if q is None else q)
             proposal.target_tokens.extend(expansion)
             proposal.q_rows.extend([None] * len(expansion) if q is None
                                    else self.q_rows_for(q, expansion))

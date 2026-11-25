@@ -75,6 +75,8 @@ class SpeculativeDecoder:
         time_phases: bool = False,
         draft_stop_below: float = 0.0,
         draft_temperature_scale: float = 1.0,
+        superword_bonus: float = 0.0,
+        redraw: bool = False,
     ):
         if method not in METHODS + CONTROL_METHODS:
             raise ValueError(f"method must be one of {METHODS}, got {method!r}")
@@ -88,7 +90,11 @@ class SpeculativeDecoder:
         self.target_vocab = target_vocab
         self.draft_vocab = draft_vocab
         self.drafter = Drafter(draft, draft_vocab, target_vocab.vocab_size,
-                               rows=ROWS_FOR_METHOD[method])
+                               rows=ROWS_FOR_METHOD[method], superword_bonus=superword_bonus)
+        # After a rejection, re-draw the rejected draft token given the target's own token
+        # and open the next round with the rest of that superword (Drafter.redraw). Costs
+        # no draft pass. Only meaningful for the two superword methods.
+        self.redraw = redraw and method in ("superword", "superword_pointmass")
         self.method = method
         self.sampling = sampling
         self.stop_ids = set(stop_ids)
@@ -132,6 +138,7 @@ class SpeculativeDecoder:
         result = GenerationResult(prompt_length=len(prompt), tokens=[], num_bytes=0, wall_time=0)
         tokens = list(prompt)
         round_starts: list[tuple[int, int]] = []   # (len(tokens) at round start, tokens proposed)
+        pending = None        # from a re-draw: (draft context, target tokens, q rows)
         start = self._now(force_sync=True)
 
         while len(tokens) - len(prompt) < max_new_tokens:
@@ -140,12 +147,28 @@ class SpeculativeDecoder:
             max_tokens = min(self.max_target_tokens_per_round, remaining - 1)
 
             t0 = self._now()
-            draft_context = self.draft_vocab.from_target_ids(tokens)
+            head_tokens, head_rows = [], []
+            if pending is not None and len(pending[1]) <= max_tokens:
+                draft_context, head_tokens, head_rows = pending
+            else:
+                draft_context = self.draft_vocab.from_target_ids(tokens)
+            pending = None
+            head_bytes = count_bytes(self.target_vocab, head_tokens, self.stop_ids)
             t1 = self._now()
-            proposal = self.drafter.propose(
-                draft_context, self.draft_sampling, generator, max_bytes=self.max_draft_bytes,
-                max_steps=self.max_draft_steps, max_target_tokens=max_tokens,
+            drafted = self.drafter.propose(
+                draft_context, self.draft_sampling, generator,
+                max_bytes=max(1, self.max_draft_bytes - head_bytes),
+                max_steps=self.max_draft_steps, max_target_tokens=max_tokens - len(head_tokens),
                 stop_ids=self.stop_ids, stop_below=self.draft_stop_below)
+            proposal = drafted
+            if head_tokens:       # the re-drawn tokens come first; they belong to no draft pass
+                proposal = Proposal(
+                    target_tokens=list(head_tokens) + drafted.target_tokens,
+                    q_rows=list(head_rows) + drafted.q_rows,
+                    draft_tokens=drafted.draft_tokens,
+                    source=[-1] * len(head_tokens) + drafted.source,
+                    num_bytes=head_bytes + drafted.num_bytes, num_steps=drafted.num_steps,
+                    step_scores=drafted.step_scores)
             t2 = self._now()
             if self.method == "exact_match" and self.retokenize:
                 proposal = self._to_target_strings(proposal, max_tokens)
@@ -173,6 +196,21 @@ class SpeculativeDecoder:
                     new, stopped = new[: i + 1], True
                     break
             tokens.extend(new)
+            if self.redraw and not stopped and accepted < k and proposal.source[accepted] >= 0:
+                # The token at `accepted` was rejected and replaced by next_token. It was token
+                # j of draft token s; re-draw that draft token given its accepted part + next_token.
+                s = proposal.source[accepted]
+                j = accepted - proposal.source.index(s)
+                prefix = tuple(self.draft_vocab.expand(drafted.draft_tokens[s])[:j]) + (next_token,)
+                again = self.drafter.redraw(drafted.step_scores[s], self.draft_sampling.greedy,
+                                            prefix, generator)
+                if again is not None:
+                    w, rest, rows = again
+                    pending = (draft_context + drafted.draft_tokens[:s] + [w], list(rest), rows)
+            if head_tokens:
+                result.redraw_rounds += 1
+                result.redraw_tokens += len(head_tokens)
+                result.redraw_accepted += min(accepted, len(head_tokens))
             t4 = self._now()
 
             result.rounds += 1

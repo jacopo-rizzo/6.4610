@@ -21,7 +21,8 @@ import json
 from pathlib import Path
 
 ROUND_START_FIELDS = ["rounds_clean", "rounds_mid", "first_accepted_clean",
-                      "first_accepted_mid", "accepted_tokens_clean", "accepted_tokens_mid"]
+                      "first_accepted_mid", "accepted_tokens_clean", "accepted_tokens_mid",
+                      "redraw_rounds", "redraw_tokens", "redraw_accepted"]
 SUM_FIELDS = ["num_bytes", "wall_time", "rounds", "draft_steps", "proposed_tokens",
               "accepted_tokens", "proposed_bytes", "accepted_bytes", "draft_time",
               "target_time", "overhead_time", "num_tokens"]
@@ -50,7 +51,9 @@ def aggregate(rows: list[dict]) -> list[dict]:
                 totals[key] = {k: row[k] for k in ("temperature", "method", "draft",
                                                    "draft_len_bytes")}
                 totals[key].update(stop_below=row.get("stop_below", 0.0),
-                                   temp_scale=row.get("temp_scale", 1.0))
+                                   temp_scale=row.get("temp_scale", 1.0),
+                                   sw_bonus=row.get("sw_bonus", 0.0),
+                                   redraw=row.get("redraw", False))
                 totals[key].update({f: 0.0 for f in SUM_FIELDS + ROUND_START_FIELDS},
                                    category=category, prompts=0)
             t = totals[key]
@@ -74,7 +77,8 @@ def aggregate(rows: list[dict]) -> list[dict]:
         summary.append({
             "temperature": t["temperature"], "category": t["category"], "method": t["method"],
             "draft": t["draft"], "draft_len_bytes": t["draft_len_bytes"],
-            "stop_below": t["stop_below"], "temp_scale": t["temp_scale"], "prompts": t["prompts"],
+            "stop_below": t["stop_below"], "temp_scale": t["temp_scale"],
+            "sw_bonus": t["sw_bonus"], "redraw": t["redraw"], "prompts": t["prompts"],
             "bytes_per_second": round(bps, 2),
             "speedup": round(bps / base, 3) if base else None,
             "token_acceptance": _ratio(t["accepted_tokens"], t["proposed_tokens"]),
@@ -92,6 +96,10 @@ def aggregate(rows: list[dict]) -> list[dict]:
             "accepted_tokens_per_round_clean": _ratio(t["accepted_tokens_clean"],
                                                       t["rounds_clean"]),
             "accepted_tokens_per_round_mid": _ratio(t["accepted_tokens_mid"], t["rounds_mid"]),
+            # Re-draw after a rejection: share of rounds it opened, and how often its tokens
+            # were accepted.
+            "redraw_round_frac": _ratio(t["redraw_rounds"], t["rounds"]),
+            "redraw_token_accept": _ratio(t["redraw_accepted"], t["redraw_tokens"]),
             "draft_ms_per_step":
                 _ratio(1000 * t["draft_time"], t["draft_steps"]) if synced else None,
             "target_ms_per_pass":
@@ -103,7 +111,7 @@ def aggregate(rows: list[dict]) -> list[dict]:
     summary.sort(key=lambda s: (s["category"] != "all", s["category"], s["temperature"],
                                 s["method"] != "autoregressive", str(s["draft"]),
                                 s["method"], s["draft_len_bytes"] or 0, s["stop_below"],
-                                s["temp_scale"]))
+                                s["temp_scale"], s["sw_bonus"], s["redraw"]))
     return summary
 
 

@@ -242,3 +242,48 @@ def test_stop_below_shortens_proposals_and_keeps_greedy_output(setup):
         a, b = plain[name].generate(prompt, 30), stopping[name].generate(prompt, 30)
         assert b.tokens == expected, name
         assert b.draft_steps / b.rounds < a.draft_steps / a.rounds, name    # shorter proposals
+
+
+@pytest.mark.parametrize("method", ["superword", "superword_pointmass"])
+def test_redraw_and_superword_bonus_are_lossless(setup, method):
+    """Re-drawing after a rejection and favouring superwords: a sampled check on the real
+    decoder code. It has little power (tests/test_lossless_math.py proves the rule exactly
+    and shows that a wrong one is caught); here we check that the code path runs, that
+    re-drawn tokens get accepted, and that nothing is grossly off."""
+    base, superbpe, *_, prompt = setup
+    sampling = SamplingConfig(temperature=0.8)
+    # Soft target and draft (many tokens get real probability), so re-draws find
+    # superwords often and their tokens are sometimes accepted.
+    target = tiny_llama(base.vocab_size, seed=8, sharpness=4.0)
+    soft_draft = tiny_llama(superbpe.vocab_size, seed=4, sharpness=4.0)
+    joint = exact_target_joint(target, prompt, sampling)
+    decoder = SpeculativeDecoder(CachedLM(target), base, CachedLM(soft_draft), superbpe, method,
+                                 sampling=sampling, stop_ids=set(), max_draft_bytes=16,
+                                 redraw=True, superword_bonus=3.0)
+
+    n = 6000
+    gen = torch.Generator().manual_seed(77)
+    counts, redraws, accepted = Counter(), 0, 0
+    for _ in range(n):
+        r = decoder.generate(prompt, 6, gen)
+        counts[tuple(r.tokens[:2])] += 1
+        redraws += r.redraw_rounds
+        accepted += r.redraw_accepted
+    assert redraws > n // 50 and accepted > 0, (redraws, accepted)     # the path is exercised
+    tv = total_variation(counts, joint, n)
+    rng = np.random.default_rng(2)
+    keys, probs = list(joint), np.array(list(joint.values()))
+    noise = [total_variation(dict(zip(keys, rng.multinomial(n, probs / probs.sum()))), joint, n)
+             for _ in range(200)]
+    assert tv < 1.3 * np.quantile(noise, 0.995), f"{method}: TV {tv:.4f}"
+
+
+def test_redraw_and_bonus_keep_greedy_output(setup):
+    base, _, target, *_, prompt = setup
+    sampling = SamplingConfig(temperature=0.0)
+    expected = autoregressive_generate(CachedLM(target), base, prompt, 40, sampling, set()).tokens
+    for name in ("superword", "superword_pointmass", "standard"):
+        r = decoders(setup, sampling, redraw=True, superword_bonus=2.0)[name].generate(prompt, 40)
+        assert r.tokens == expected, name
+        if name == "standard":
+            assert r.redraw_rounds == 0          # nothing to re-draw without superwords

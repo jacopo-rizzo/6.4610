@@ -34,6 +34,8 @@ class RunSpec:
     draft_len_bytes: int | None = None
     stop_below: float = 0.0          # speculative.draft_stop_below
     temp_scale: float = 1.0          # speculative.draft_temperature_scale
+    sw_bonus: float = 0.0            # speculative.superword_logit_bonus
+    redraw: bool = False             # speculative.redraw_after_rejection
 
     @property
     def key(self) -> str:
@@ -43,6 +45,10 @@ class RunSpec:
             key += f"|stop={self.stop_below}"
         if self.temp_scale != 1.0:
             key += f"|tscale={self.temp_scale}"
+        if self.sw_bonus:
+            key += f"|bonus={self.sw_bonus}"
+        if self.redraw:
+            key += "|redraw"
         return key
 
 
@@ -59,10 +65,14 @@ def build_run_specs(cfg, drafts: dict[str, Draft]) -> list[RunSpec]:
                                else "exact_match_noretok")
             stop = float(spec_cfg.get("draft_stop_below", 0.0))
             scale = float(spec_cfg.get("draft_temperature_scale", 1.0))
+            bonus = float(spec_cfg.get("superword_logit_bonus", 0.0))
+            redraw = bool(spec_cfg.get("redraw_after_rejection", False))
             for method in methods:
                 for n_bytes in spec_cfg.draft_len_bytes:
+                    superword = method.startswith("superword")    # the only methods they affect
                     specs.append(RunSpec(float(temperature), method, name, int(n_bytes), stop,
-                                         scale))
+                                         scale, bonus if superword else 0.0,
+                                         redraw and superword))
     return specs
 
 
@@ -86,6 +96,8 @@ def make_generate_fn(spec: RunSpec, cfg, target: Target, drafts: dict[str, Draft
         time_phases=cfg.timing.get("phase_breakdown", False),
         draft_stop_below=spec.stop_below,
         draft_temperature_scale=spec.temp_scale,
+        superword_bonus=spec.sw_bonus,
+        redraw=spec.redraw,
     )
     return lambda prompt, gen: decoder.generate(prompt, max_new, gen)
 

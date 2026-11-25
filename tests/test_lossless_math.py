@@ -199,6 +199,134 @@ def test_wrong_marginal_is_not_lossless():
         assert max(max_error("wrong_marginal", expansion, seed) for seed in range(5)) > 1e-3
 
 
+# ---------------------------------------------------------------------------------------
+# Re-draw after a rejection (Drafter.redraw / SpeculativeDecoder(redraw=True)), exactly.
+#
+# Round 1 is as above. If token i of the proposal is rejected and replaced by the target's
+# token y, let w be the draft token it belonged to, j its position inside w, q_row the
+# probabilities w was drawn from, and prefix = w[:j] + (y,). A draft token v is drawn again
+# from q_row restricted to tokens that equal prefix or start with it. If v is longer than
+# prefix, round 2 proposes its remaining target tokens, verified against
+#   length_aware: later_token_row(q_row, v, position)      point_mass: a point mass.
+# Round 2 drafts nothing more here; after it the target finishes the sequence.
+
+def verify_tail(p, prefix, xs, rows, weight, outputs):
+    """Verify proposed tokens xs after `prefix`; add every outcome of the round to outputs."""
+    for x, row in zip(xs, rows):
+        pt = p(prefix)
+        if row is None:
+            accept, residual = pt[x], pt.copy()
+            residual[x] = 0
+        else:
+            accept, residual = min(1.0, pt[x] / row[x]), np.maximum(pt - row, 0)
+        if accept < 1:
+            residual = residual / residual.sum()
+            for y in range(VT):
+                outputs[prefix + (y,)] += weight * (1 - accept) * residual[y]
+        weight *= accept
+        prefix += (x,)
+    for y in range(VT):
+        outputs[prefix + (y,)] += weight * p(prefix)[y]
+
+
+def redraw_distribution(p, q, expansion, rule, broken=False):
+    """Exact distribution of the tokens output by round 1 plus, after a rejection, the
+    re-draw round."""
+    vd = len(expansion)
+    outputs = defaultdict(float)
+
+    def after_rejection(prefix, y, weight, q_row, w, j):
+        want = expansion[w][:j] + (y,)
+        cands = [v for v in range(vd) if expansion[v][: len(want)] == want and q_row[v] > 0]
+        longer = [v for v in cands if len(expansion[v]) > len(want)]
+        if not longer:
+            outputs[prefix + (y,)] += weight
+            return
+        total = sum(q_row[v] for v in cands)
+        for v in cands:
+            wv = weight * q_row[v] / total
+            if len(expansion[v]) == len(want):               # drew the prefix itself
+                outputs[prefix + (y,)] += wv
+                continue
+            rest = expansion[v][len(want):]
+            if broken:                                       # negative control: wrong rows
+                rows = [first_token_marginal(q_row, expansion) for _ in rest]
+            elif rule == "length_aware":
+                rows = [later_token_row(q_row, expansion, v, k)
+                        for k in range(len(want), len(expansion[v]))]
+            else:
+                rows = [None] * len(rest)
+            verify_tail(p, prefix + (y,), rest, rows, wv, outputs)
+
+    def verify(xs, rows, meta, weight):
+        prefix = ()
+        for i, (x, row) in enumerate(zip(xs, rows)):
+            pt = p(prefix)
+            if row is None:
+                accept, residual = pt[x], pt.copy()
+                residual[x] = 0
+            else:
+                accept, residual = min(1.0, pt[x] / row[x]), np.maximum(pt - row, 0)
+            if accept < 1:
+                residual = residual / residual.sum()
+                q_row, w, j = meta[i]
+                for y in range(VT):
+                    if residual[y] > 0:
+                        after_rejection(prefix, y, weight * (1 - accept) * residual[y], q_row, w, j)
+            weight *= accept
+            prefix += (x,)
+        for y in range(VT):                                  # everything accepted: no re-draw
+            outputs[prefix + (y,)] += weight * p(prefix)[y]
+
+    def draft(dprefix, weight, xs, rows, meta):
+        if len(dprefix) == DRAFT_STEPS:
+            verify(xs, rows, meta, weight)
+            return
+        q_row = q(dprefix, vd)
+        for w in range(vd):
+            if q_row[w] == 0:
+                continue
+            exp = expansion[w]
+            first = first_token_marginal(q_row, expansion)
+            if rule == "length_aware":
+                later = [later_token_row(q_row, expansion, w, j) for j in range(1, len(exp))]
+            else:
+                later = [None] * (len(exp) - 1)
+            draft(dprefix + (w,), weight * q_row[w], xs + list(exp), rows + [first] + later,
+                  meta + [(q_row, w, j) for j in range(len(exp))])
+
+    draft((), 1.0, [], [], [])
+    return outputs
+
+
+def redraw_error(rule, expansion, seed, broken=False):
+    p, q = random_tables(seed)
+    n = N + 2                                                # room for the second round
+    joint = defaultdict(float)
+    for out, prob in redraw_distribution(p, q, expansion, rule, broken).items():
+        if len(out) >= n:
+            joint[out[:n]] += prob
+            continue
+        for rest in itertools.product(range(VT), repeat=n - len(out)):
+            y = out + rest
+            joint[y] += prob * np.prod([p(y[:i])[y[i]] for i in range(len(out), n)])
+    ref = target_joint(p, n)
+    assert abs(sum(joint.values()) - 1) < 1e-9
+    return max(abs(joint[y] - ref[y]) for y in ref)
+
+
+def test_redraw_is_lossless():
+    for rule in ("length_aware", "point_mass"):
+        for seed in range(5):
+            assert redraw_error(rule, EXPANSION_SHARED, seed) < 1e-12, (rule, seed)
+
+
+def test_redraw_with_wrong_rows_is_not_lossless():
+    # Sanity check that the re-draw test can fail.
+    assert max(redraw_error("length_aware", EXPANSION_SHARED, seed, broken=True)
+               for seed in range(5)) > 1e-3
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
